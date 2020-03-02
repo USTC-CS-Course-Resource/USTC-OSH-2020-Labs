@@ -8,16 +8,8 @@ find . | cpio --quiet -H newc -o | gzip -9 -n > ../initrd.cpio.gz
 cd ../../../
 qemu-system-x86_64 -kernel linux-5.4.22/arch/x86_64/boot/bzImage -initrd ramdisk/test3/initrd.cpio.gz -nographic -append "root=/dev/sda console=ttyS0" 
 ```
-qemu-system-x86_64 -kernel linux-5.4.22/arch/x86_64/boot/bzImage -initrd ramdisk/test3/initrd.cpio.gz
 
-
-qemu-system-x86_64 -kernel linux-5.4.22/arch/x86_64/boot/bzImage -initrd ramdisk/test3/initrd.cpio.gz -nographic -append "root=/dev/sda console=ttyS0" 
-
-qemu-system-x86_64 -kernel linux-5.4.22/arch/x86_64/boot/bzImage -initrd ramdisk/test3/initrd1.cpio.gz -nographic -append "root=/dev/sda console=ttyS0" 
-
-qemu-system-x86_64 -kernel linux-5.4.22/arch/x86_64/boot/bzImage -initrd ramdisk/test3/initrd2.cpio.gz -nographic -append "root=/dev/sda console=ttyS0" 
-
-qemu-system-x86_64 -kernel linux-5.4.22/arch/x86_64/boot/bzImage -initrd ramdisk/test3/initrd3.cpio.gz -nographic -append "root=/dev/sda console=ttyS0" 
+qemu-system-x86_64 -kernel bzImage -initrd initrd.cpio.gz -append 'vga=0x343' -serial stdio
 
 为了支持FrameBuffer, 需要打开的有
 [*]   Enable Video Mode Handling Helpers
