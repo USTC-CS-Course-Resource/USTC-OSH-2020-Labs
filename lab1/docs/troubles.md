@@ -35,3 +35,5 @@ qemu-system-x86_64 -hda mbr
 
 \$表示当前地址
 \$\$表示程序起始地址
+
+tree -I "ramdisk|linux-*"
