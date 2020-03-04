@@ -9,7 +9,6 @@ OSH-2020-Labs/
 ├── lab1  
 │   ├── docs  
 │   │   ├── report.md  
-│   │   └── troubles.md  
 │   ├── linux  
 │   │   ├── bzImage  
 │   │   ├── .config  
