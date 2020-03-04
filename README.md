@@ -3,6 +3,7 @@
 
 ## the File Structure of this Repository
 
+```shell
 OSH-2020-Labs/  
 ├── .gitignore  
 ├── lab1  
@@ -20,3 +21,4 @@ OSH-2020-Labs/
 └── README.md  
  
 4 directories, 10 files  
+```
