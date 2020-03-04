@@ -3,17 +3,20 @@
 
 ## the struct of lab1  
 
-lab1  
-├── docs  
-│   ├── report.md  
-│   └── troubles.md  
-├── linux  
-│   ├── bzImage  
-│   ├── .config  
-│   ├── initrd.cpio.gz  
-│   └── initrd_withshell.cpio.gz  
-└── mbr  
-    ├── mbr  
-    └── mbr.asm  
-
-3 directories, 8 files  
+OSH-2020-Labs/  
+├── .gitignore  
+├── lab1  
+│   ├── docs  
+│   │   ├── report.md  
+│   │   └── troubles.md  
+│   ├── linux  
+│   │   ├── bzImage  
+│   │   ├── .config  
+│   │   ├── initrd.cpio.gz  
+│   │   └── initrd_withshell.cpio.gz  
+│   └── mbr  
+│       ├── mbr  
+│       └── mbr.asm  
+└── README.md  
+ 
+4 directories, 10 files  
