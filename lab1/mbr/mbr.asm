@@ -21,13 +21,13 @@ main:
             jl .count
 
         mov si, OSH                         ; si points to string OSH
-        .print_next_char:                   ; print the string
+        .print_str:                   ; print the string
             lodsb                           ; load char to al
             cmp al, 0                       ; is it the end of the string?
             je .print_loop                  ; if true, then halt the system
             mov ah, 0x0e                    ; if false, then set AH = 0x0e 
             int 0x10                        ; call BIOS interrupt procedure, print a char to screen
-            jmp .print_next_char            ; loop over to print all chars
+            jmp .print_str            ; loop over to print all chars
 
 
     .hlt:
