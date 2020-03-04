@@ -1,7 +1,7 @@
 # OSH-2020-Labs
 王章瀚 PB18111697
 
-## the struct of lab1  
+## the File Structure of this Repository
 
 OSH-2020-Labs/  
 ├── .gitignore  
