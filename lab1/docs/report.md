@@ -164,7 +164,7 @@ vinfo.xoffset = 0, vinfo.yoffset = 0, finfo.line_length = 3200
 The image 'The KDE dragons', created by Tyson Tan, is under CC-BY-SA.
 ```
 
-并显示了一张一群恐龙的图片.  
+此外还显示了一张一群恐龙的图片.  
 由于有程序的控制, 这个`initrd`最后并不会引起内核恐慌.  
 
 #### 使用`BusyBox`构建`initrd`
