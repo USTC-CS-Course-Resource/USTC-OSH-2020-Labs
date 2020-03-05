@@ -1,6 +1,11 @@
 # The Report for Lab1
 PB18111697 王章瀚  
 
+## 实验环境
+
+x86_64  
+Ubuntu 18.04.1
+
 ## 关于 Git 与 GitHub 仓库
 
 ### 仓库建立与邀请
@@ -183,7 +188,7 @@ The image 'The KDE dragons', created by Tyson Tan, is under CC-BY-SA.
 另外, 为了做清屏操作, 需要有这样四句调用BIOS中断来完成.  
 
 ```x86
- mov ah, 0x0F
+mov ah, 0x0F
 int 0x10
 mov ah, 0x00
 int 0x10   
