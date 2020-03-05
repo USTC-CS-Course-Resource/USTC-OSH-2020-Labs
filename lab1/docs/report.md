@@ -139,10 +139,10 @@ int main() {
 
 #### 测试
 
-输入以下命令:  
+输入以下命令(其中console=ttyS0是为了测试串口方便):  
 
 ```shell
-`qemu-system-x86_64 -kernel bzImage -initrd initrd.cpio.gz -append 'vga=0x343' -serial stdio`
+`qemu-system-x86_64 -kernel bzImage -initrd initrd.cpio.gz -append 'vga=0x343 console=ttyS0' -serial stdio`
 ```
 
 输出结果如下:  
