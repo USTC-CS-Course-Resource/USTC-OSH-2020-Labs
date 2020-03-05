@@ -65,7 +65,7 @@ qemu-system-x86_64 -kernel bzImage -initrd initrd.cpio.gz
 使用`qemu`来运行编译出的内核, 并载入初始内存盘. 此时又出现了`Kernel Panic`, 不同的是, 这次是这样的:  
 
 ```shell
-[    1.304828] ---[ end Kernel panic - not syncing: Attempted to kill init! exitcode=0x00000000 ]---
+end Kernel panic - not syncing: Attempted to kill init! exitcode=0x00000000
 ```
 
 字面上理解, 这个指示的是正在尝试杀死`init`, 退出码为`0x00000000`. 经过实验, 发现这个退出码正是我们init程序的返回值, 因此推测这个panic很可能是由于程序的结束返回而造成此时无程序可进行.  
