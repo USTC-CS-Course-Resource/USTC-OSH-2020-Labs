@@ -22,6 +22,8 @@ int exec_cmd(char* cmd, int will_fork);
 char* strip(char* str, const char* chars);
 int redirect_pre(char* cmd, char* out_fname, char* in_fname, int* out_flag, int* in_flag);
 int redirect(char* out_fname, char* in_fname, int out_flag, int in_flag);
+int checkfile(char* cmd);
+char* get_parameter(char* str, const char* para, int keep);
 
 
 int main() {
@@ -43,6 +45,9 @@ int main() {
 
         /* check if pipe isn't used in input */
         if(!strstr(input, "|")) {
+            if(checkfile(input) == false) {
+                continue;
+            }
             exec_cmd(input, true);
             continue;
         }
@@ -71,6 +76,9 @@ int main() {
                 exit(2);
             }
             else if(pid == 0) {
+                if(checkfile(cmds[i]) == false) {
+                    exit(255);
+                }
                 /* connect the pipes */
                 if(i != 0) {
                     dup2(fds[i-1][0], 0);
@@ -152,12 +160,19 @@ char* strip(char* str, const char* chars) {
     return str;
 }
 
-char* get_parameter(char* str, const char* para) {
+/*
+ * Describe: get the value of according parameter in str,
+ *  and this parameter and the value will be removed from str 
+ *  if keep == true
+ */
+char* get_parameter(char* str, const char* para, int keep) {
     char chars[] = " \t\n";
     char temp[2] = "a";
     char* pvalue;
     if(pvalue = strstr(str, para)) {
-        *pvalue = '\0';
+        if(keep == false) {
+            *pvalue = '\0';
+        }
         pvalue += strlen(para);
         
         int len = strlen(pvalue);
@@ -182,6 +197,9 @@ char* get_parameter(char* str, const char* para) {
         char* final_value = (char*)calloc(strlen(pvalue)+1, sizeof(char));
         final_value = strcpy(final_value, pvalue);
         others[0] = ' ';
+        if(keep == true) {
+            return final_value;
+        }
         strcat(str, others);
 
         return final_value;
@@ -189,39 +207,15 @@ char* get_parameter(char* str, const char* para) {
     return NULL;
 }
 
-
-int redirect_pre(char* cmd, char* out_fname, char* in_fname, int* out_flag, int* in_flag) {
-    /* check if <, >, >> in command */
-    out_fname = NULL;
-    *out_flag = 0;
-    if(out_fname = get_parameter(cmd, ">>")) {
-        *out_flag = 2;
-    }
-    else if(out_fname = get_parameter(cmd, ">")) {
-        *out_flag = 1;
-    }
-    in_fname = NULL;
-    *in_flag = 0;
-    if(in_fname = get_parameter(cmd, "<")) {
-        if(open(in_fname, O_RDONLY) == -1) {
-            printf("The file {%s} isn't found!\n", in_fname);
-            return -1;
-        }
-        *in_flag = 1;
-    }
-    return 0;
-}
-
+/*
+ * Describe: redirect according to the parameters
+ */
 int redirect(char* out_fname, char* in_fname, int out_flag, int in_flag) {
     int fd;
     /* if >, >>, < is used */
     if(in_flag == 1) {
         close(0);
         fd = open(in_fname, O_RDONLY);
-        if(fd == -1) {
-            printf("The file {%s} isn't found!\n", in_fname);
-            return -1;
-        }
     }
     if(out_flag == 2) {
         close(1);
@@ -248,13 +242,13 @@ int exec_cmd(char* cmd, int will_fork) {
     char* in_fname = NULL;
     int out_flag = 0, in_flag = 0;
 
-    if(out_fname = get_parameter(cmd, ">>")) {
+    if(out_fname = get_parameter(cmd, ">>", false)) {
         out_flag = 2;
     }
-    else if(out_fname = get_parameter(cmd, ">")) {
+    else if(out_fname = get_parameter(cmd, ">", false)) {
         out_flag = 1;
     }
-    if(in_fname = get_parameter(cmd, "<")) {
+    if(in_fname = get_parameter(cmd, "<", false)) {
         in_flag = 1;
     }
 
@@ -324,3 +318,29 @@ int exec_cmd(char* cmd, int will_fork) {
     return 0;
 }
 
+/*
+ * Describe: checkout whether the files needed exist
+ * Input:
+ *  cmd: the command to be checked
+ * Return
+ *  true: exist
+ *  false: not exist
+ */ 
+int checkfile(char* cmd) {
+    char* cmd_cpy = (char*)calloc(strlen(cmd), sizeof(char));
+    char* in_fname = NULL;
+    if(in_fname = get_parameter(cmd, "<", true)) {
+        int fd;
+        fd = open(in_fname, O_RDONLY);
+        if(fd != -1) {
+            close(fd);
+            return true;
+        }
+        else {
+            close(fd);
+            printf("The file {%s} isn't found!\n", in_fname);
+            return false;
+        }
+    }
+    return true;
+}
