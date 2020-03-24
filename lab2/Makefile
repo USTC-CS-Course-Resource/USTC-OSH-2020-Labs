@@ -1,5 +1,5 @@
 SHELL:
-	g++ shell.c -o sh
+	gcc shell.c -o sh
 
 run:
 	./sh

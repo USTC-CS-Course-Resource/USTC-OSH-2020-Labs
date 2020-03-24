@@ -1,5 +1,5 @@
 TEST:
-	g++ test.cpp -o test -g
+	gcc test.cpp -o test -g
 
 run:
 	./test
