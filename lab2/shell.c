@@ -11,9 +11,12 @@
 #define ARG_NUM 128
 #define CMD_NUM 128
 
+#define true 1
+#define false 0
+
 void split_strs(char* str, const char* sep, /* in */
                 char** strs, int* strc /* out */);
-void exec_cmd(char* cmd);
+void exec_cmd(char* cmd, int will_fork);
 
 int main() {
     /* the input from the shell */
@@ -35,7 +38,7 @@ int main() {
 
         /* check if pipe isn't used in input */
         if(!strstr(input, "|")) {
-            exec_cmd(input);
+            exec_cmd(input, true);
             continue;
         }
 
@@ -58,7 +61,6 @@ int main() {
             int argc = 0;
 
             pid_t pid = fork();
-
             if(pid < 0) {
                 printf("error: can't fork!\n");
                 exit(2);
@@ -69,13 +71,12 @@ int main() {
                     dup2(fds[i-1][0], 0);
                     close(fds[i-1][0]);
                 }
-
                 if(i < cmdc - 1) {
                     dup2(fds[i][1], 1);
                 }
 
                 /* execute the command */
-                exec_cmd(cmds[i]);
+                exec_cmd(cmds[i], false);
             }
             else {
                 wait(NULL);
@@ -91,8 +92,15 @@ int main() {
     return 0;
 }
 
-/* this function is used for split the str by sep into strs, 
+/* describe: this function is used for split the str by sep into strs, 
  * while the count of strs will be returned by strc
+ * 
+ * input:
+ *  str: string to be split
+ *  sep: split by sep
+ * output:
+ *  strs: the split strs
+ *  strc: the count of split strs
  */ 
 void split_strs(char* str, const char* sep, /* in */
                 char** strs, int* strc /* out */) {
@@ -105,7 +113,12 @@ void split_strs(char* str, const char* sep, /* in */
     strs[*strc] = NULL;
 }
 
-void exec_cmd(char* cmd) {
+/* describe: execute a command, but without pipe "|"
+ * input:
+ *  cmd: the command to be execute
+ *  will_fork: whether the external command will execute in a child process
+ */ 
+void exec_cmd(char* cmd, int will_fork) {
     int argc = 0;
     char** args = (char**)calloc(ARG_NUM, sizeof(char*));
     split_strs(cmd, " \n", args, &argc);
@@ -140,14 +153,22 @@ void exec_cmd(char* cmd) {
     if (strcmp(args[0], "exit") == 0)
         exit(0);
 
-    /* 外部命令 */
-    pid_t pid = fork();
-    if (pid == 0) {
-        /* 子进程 */
+    /* external command */
+    if(will_fork) {
+        pid_t pid = fork();
+        if (pid == 0) {
+            /* child process */
+            execvp(args[0], args);
+            /* execvp failed */
+            exit(255);
+        }
+        /* parent process */
+        wait(NULL);
+    }
+    else {
+        /* child process */
         execvp(args[0], args);
-        /* execvp失败 */
+        /* execvp failed */
         exit(255);
     }
-    /* 父进程 */
-    wait(NULL);
 }
