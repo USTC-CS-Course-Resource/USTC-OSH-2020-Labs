@@ -18,8 +18,10 @@
 
 void split_strs(char* str, const char* sep, /* in */
                 char** strs, int* strc /* out */);
-void exec_cmd(char* cmd, int will_fork);
+int exec_cmd(char* cmd, int will_fork);
 char* strip(char* str, const char* chars);
+int redirect_pre(char* cmd, char* out_fname, char* in_fname, int* out_flag, int* in_flag);
+int redirect(char* out_fname, char* in_fname, int out_flag, int in_flag);
 
 
 int main() {
@@ -78,7 +80,9 @@ int main() {
                     dup2(fds[i][1], 1);
                 }
                 /* execute the command */
-                exec_cmd(cmds[i], false);
+                if(exec_cmd(cmds[i], false) == -1) {
+                    exit(255);
+                }
             }
             else {
                 wait(NULL);
@@ -148,34 +152,109 @@ char* strip(char* str, const char* chars) {
     return str;
 }
 
+char* get_parameter(char* str, const char* para) {
+    char chars[] = " \t\n";
+    char temp[2] = "a";
+    char* pvalue;
+    if(pvalue = strstr(str, para)) {
+        *pvalue = '\0';
+        pvalue += strlen(para);
+        
+        int len = strlen(pvalue);
+        for(int i = 0; i < len; i++) {
+            temp[0] = pvalue[0];
+            if(strstr(chars, temp)) {
+                pvalue++;
+            }
+            else {
+                break;
+            }
+        }
+        char* others = pvalue;
+        len = strlen(others);
+        for(int i = 0; i < len; i++, others++) {
+            temp[0] = others[0];
+            if(strstr(chars, temp)) {
+                others[0] = '\0';
+                break;
+            }
+        }
+        char* final_value = (char*)calloc(strlen(pvalue)+1, sizeof(char));
+        final_value = strcpy(final_value, pvalue);
+        others[0] = ' ';
+        strcat(str, others);
+
+        return final_value;
+    }
+    return NULL;
+}
+
+
+int redirect_pre(char* cmd, char* out_fname, char* in_fname, int* out_flag, int* in_flag) {
+    /* check if <, >, >> in command */
+    out_fname = NULL;
+    *out_flag = 0;
+    if(out_fname = get_parameter(cmd, ">>")) {
+        *out_flag = 2;
+    }
+    else if(out_fname = get_parameter(cmd, ">")) {
+        *out_flag = 1;
+    }
+    in_fname = NULL;
+    *in_flag = 0;
+    if(in_fname = get_parameter(cmd, "<")) {
+        if(open(in_fname, O_RDONLY) == -1) {
+            printf("The file {%s} isn't found!\n", in_fname);
+            return -1;
+        }
+        *in_flag = 1;
+    }
+    return 0;
+}
+
+int redirect(char* out_fname, char* in_fname, int out_flag, int in_flag) {
+    int fd;
+    /* if >, >>, < is used */
+    if(in_flag == 1) {
+        close(0);
+        fd = open(in_fname, O_RDONLY);
+        if(fd == -1) {
+            printf("The file {%s} isn't found!\n", in_fname);
+            return -1;
+        }
+    }
+    if(out_flag == 2) {
+        close(1);
+        fd = open(out_fname, O_RDWR|O_CREAT|O_APPEND, 0666);
+    }
+    else if(out_flag == 1) {
+        close(1);
+        fd = open(out_fname, O_WRONLY|O_CREAT|O_TRUNC, 0666);
+    }
+}
+
 /* Describe: execute a command, but without pipe "|".
  *  But <, >, >> are allowed.
  * Input:
  *  cmd: the command to be execute
  *  will_fork: whether the external command will execute in a child process
+ * Return:
+ *  -1: file isn't found
+ *  0: normal
  */ 
-void exec_cmd(char* cmd, int will_fork) {
+int exec_cmd(char* cmd, int will_fork) {
     /* check if <, >, >> in command */
     char* out_fname = NULL;
-    int out_flag = 0;
-    if(out_fname = strstr(cmd, ">>")) {
-        *(out_fname) = '\0';
-        out_fname = out_fname + 2;
-        out_fname = strip(out_fname, " \n");
+    char* in_fname = NULL;
+    int out_flag = 0, in_flag = 0;
+
+    if(out_fname = get_parameter(cmd, ">>")) {
         out_flag = 2;
     }
-    else if(out_fname = strstr(cmd, ">")) {
-        *(out_fname) = '\0';
-        out_fname = out_fname + 1;
-        out_fname = strip(out_fname, " \n");
+    else if(out_fname = get_parameter(cmd, ">")) {
         out_flag = 1;
     }
-    char* in_fname = NULL;
-    int in_flag = 0;
-    if(in_fname = strstr(cmd, "<")) {
-        *(in_fname) = '\0';
-        in_fname = in_fname + 1;
-        in_fname = strip(in_fname, " \n");
+    if(in_fname = get_parameter(cmd, "<")) {
         in_flag = 1;
     }
 
@@ -185,18 +264,18 @@ void exec_cmd(char* cmd, int will_fork) {
     split_strs(cmd, " \n", args, &argc);
     /* no command */
     if (!args[0])
-        return;
+        return 0;
 
     /* built-in command */
     if (strcmp(args[0], "cd") == 0) {
         if (args[1])
             chdir(args[1]);
-        return;
+        return 0;
     }
     if (strcmp(args[0], "pwd") == 0) {
         char wd[CMD_SIZE];
         puts(getcwd(wd, CMD_SIZE));
-        return;
+        return 0;
     }
     if (strcmp(args[0], "export") == 0) {
         for (int i = 1; args[i] != NULL; i++) {
@@ -209,28 +288,18 @@ void exec_cmd(char* cmd, int will_fork) {
             value++;
             setenv(name, value, 1);
         }
-        return;
+        return 0;
     }
     if (strcmp(args[0], "exit") == 0)
         exit(0);
 
     /* external command */
-    int fd;
     if(will_fork) {
         pid_t pid = fork();
         if (pid == 0) {
-            /* if >, >>, < is used */
-            if(out_flag == 2) {
-                close(1);
-                fd = open(out_fname, O_RDWR|O_CREAT|O_APPEND, 0666);
-            }
-            else if(out_flag == 1) {
-                close(1);
-                fd = open(out_fname, O_WRONLY|O_CREAT|O_TRUNC, 0666);
-            }
-            if(in_flag == 1) {
-                close(0);
-                fd = open(in_fname, O_RDONLY);
+            /* redirect if needed */
+            if(redirect(out_fname, in_fname, out_flag, in_flag) == -1) {
+                exit(255);
             }
             /* child process */
             execvp(args[0], args);
@@ -243,23 +312,15 @@ void exec_cmd(char* cmd, int will_fork) {
         }
     }
     else {
-        /* if >, >>, < is used */
-        if(out_flag == 2) {
-            close(1);
-            fd = open(out_fname, O_RDWR|O_CREAT|O_APPEND, 0666);
-        }
-        else if(out_flag == 1) {
-            close(1);
-            fd = open(out_fname, O_WRONLY|O_CREAT|O_TRUNC, 0666);
-        }
-        if(in_flag == 1) {
-            close(0);
-            fd = open(in_fname, O_RDONLY);
+        /* redirect if needed */
+        if(redirect(out_fname, in_fname, out_flag, in_flag) == -1) {
+            exit(255);
         }
         /* child process */
         execvp(args[0], args);
         /* execvp failed */
         exit(255);
     }
+    return 0;
 }
 
