@@ -1,4 +1,4 @@
 TEST:
-	gcc test.cpp -o test -g
+	gcc test.c -o test -g
 run:
 	./test
