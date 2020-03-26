@@ -1,3 +1,6 @@
+/*
+ * TODO: 重定向多个的选择
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -5,7 +8,9 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include<fcntl.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <setjmp.h>
 
 #define INPUT_SIZE 256
 #define PWD_SIZE 4096
@@ -19,30 +24,40 @@
 void split_strs(char* str, const char* sep, /* in */
                 char** strs, int* strc /* out */);
 int exec_cmd(char* cmd, int will_fork);
-char* strip(char* str, const char* chars);
 int redirect_pre(char* cmd, char* out_fname, char* in_fname, int* out_flag, int* in_flag);
 int redirect(char* out_fname, char* in_fname, int out_flag, int in_flag);
 int checkfile(char* cmd);
 char* get_parameter(char* str, const char* para, int keep);
+void sig_handler(int signo);
 
-
+jmp_buf jump_buffer;
+pid_t sh_pid;
+int i = 1;
 int main() {
     /* current work directory */
     char cwd[PWD_SIZE];
     /* count for the commands */
     int cmdc = 0;
+    
+    /* set SIGINT for Ctrl+C */
+    sh_pid = getpid();
 
-    while (1) {
+
+    /* jumpback if get SIGINT*/
+    sigsetjmp(jump_buffer, 1);
+    signal(SIGINT, sig_handler);
+    while (i++) {
         /* the input from the shell */
         char* input = (char*)calloc(INPUT_SIZE, sizeof(char));
         /* command prompt */
         getcwd(cwd, PWD_SIZE);
-        printf("\033[1m\033[32mRabbit\033[0m:\033[1m\033[35m%s\033[0m# ", cwd);
+        fflush(stdout);
+        printf("\033[1m\033[32mRabbit%d\033[0m:\033[1m\033[35m%s\033[0m# ", i, cwd);
         
         /* get the input */
         fflush(stdin);
         fgets(input, INPUT_SIZE, stdin);
-
+        
         /* check if pipe isn't used in input */
         if(!strstr(input, "|")) {
             if(checkfile(input) == false) {
@@ -93,7 +108,7 @@ int main() {
                 }
             }
             else {
-                wait(NULL);
+                waitpid(pid, NULL, 0);
                 if(i < cmdc - 1) {
                     close(fds[i][1]);
                 }
@@ -125,39 +140,6 @@ void split_strs(char* str, const char* sep, /* in */
         token = strtok(NULL, sep);
     }
     strs[*strc] = NULL;
-}
-
-/* Describe: set suffixal char into '\0', 
- *  and move str to the first meaningful position.
- * Input:
- *  str: string to be stripped
- *  chars: the char to be stripped
- * Return:
- *  the stripped string.
- */ 
-char* strip(char* str, const char* chars) {
-    char temp[2] = "a";
-    int len = strlen(str);
-    for(int i = 0; i < len; i++) {
-        temp[0] = str[0];
-        if(strstr(chars, temp)) {
-            str++;
-        }
-        else {
-            break;
-        }
-    }
-    len = strlen(str);
-    for(int i = len-1; i >= 0; i--) {
-        temp[0] = str[i];
-        if(strstr(chars, temp)) {
-            str[i] = '\0';
-        }
-        else {
-            break;
-        }
-    }
-    return str;
 }
 
 /*
@@ -262,6 +244,7 @@ int exec_cmd(char* cmd, int will_fork) {
 
     /* built-in command */
     if (strcmp(args[0], "cd") == 0) {
+        printf("cd!\n");
         if (args[1])
             chdir(args[1]);
         return 0;
@@ -287,32 +270,26 @@ int exec_cmd(char* cmd, int will_fork) {
     if (strcmp(args[0], "exit") == 0)
         exit(0);
 
+    
     /* external command */
     if(will_fork) {
+        signal(SIGINT, sig_handler);
         pid_t pid = fork();
         if (pid == 0) {
-            /* redirect if needed */
-            if(redirect(out_fname, in_fname, out_flag, in_flag) == -1) {
-                exit(255);
-            }
-            /* child process */
+            printf("cmd{%s}\n", cmd);
+            if(redirect(out_fname, in_fname, out_flag, in_flag) == -1) exit(255);
             execvp(args[0], args);
-            /* execvp failed */
             exit(255);
         }
         else {
-            /* parent process */
-            wait(NULL);
+            signal(SIGINT, SIG_IGN);
+            waitpid(pid, NULL, 0);
+            signal(SIGINT, sig_handler);
         }
     }
     else {
-        /* redirect if needed */
-        if(redirect(out_fname, in_fname, out_flag, in_flag) == -1) {
-            exit(255);
-        }
-        /* child process */
+        if(redirect(out_fname, in_fname, out_flag, in_flag) == -1) exit(255);
         execvp(args[0], args);
-        /* execvp failed */
         exit(255);
     }
     return 0;
@@ -343,4 +320,21 @@ int checkfile(char* cmd) {
         }
     }
     return true;
+}
+
+/*
+ * the signal handler
+ */ 
+void sig_handler(int signo)
+{
+    printf("haha\r\n");
+    if(signo ==  SIGINT)
+    {
+        if(sh_pid == getpid()) {
+            siglongjmp(jump_buffer, 2);
+        }
+        else {
+            exit(1);
+        }
+    }
 }
