@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <setjmp.h>
+#include "command.h"
 
 #define INPUT_SIZE 256
 #define PWD_SIZE 4096
@@ -21,9 +22,7 @@
 #define true 1
 #define false 0
 
-void split_strs(char* str, const char* sep, /* in */
-                char** strs, int* strc /* out */);
-int exec_cmd(char* cmd, int will_fork);
+int exec_cmd(command* cmd, int will_fork);
 int redirect_pre(char* cmd, char* out_fname, char* in_fname, int* out_flag, int* in_flag);
 int redirect(char* out_fname, char* in_fname, int out_flag, int in_flag);
 int checkfile(char* cmd);
@@ -60,10 +59,12 @@ int main() {
         
         /* check if pipe isn't used in input */
         if(!strstr(input, "|")) {
-            if(checkfile(input) == false) {
+            if(!deal_cmd(input)) {
                 continue;
             }
-            exec_cmd(input, true);
+            command* cmd = deal_cmd(input);
+            exec_cmd(cmd, true);
+            close_redir(cmd);
             continue;
         }
 
@@ -85,14 +86,15 @@ int main() {
             char** args = (char**)calloc(ARG_NUM, sizeof(char*));
             int argc = 0;
 
+            command* cmd = deal_cmd(cmds[i]);
             pid_t pid = fork();
             if(pid < 0) {
                 printf("error: can't fork!\n");
                 exit(2);
             }
             else if(pid == 0) {
-                if(checkfile(cmds[i]) == false) {
-                    exit(255);
+                if(!cmd) {
+                    printf("here\n");
                 }
                 /* connect the pipes */
                 if(i != 0) {
@@ -103,12 +105,16 @@ int main() {
                     dup2(fds[i][1], 1);
                 }
                 /* execute the command */
-                if(exec_cmd(cmds[i], false) == -1) {
+                if(exec_cmd(cmd, false) == -1) {
                     exit(255);
                 }
             }
             else {
                 waitpid(pid, NULL, 0);
+                if(!cmd) {
+                    break;
+                }
+                close_redir(cmd);
                 if(i < cmdc - 1) {
                     close(fds[i][1]);
                 }
@@ -121,26 +127,6 @@ int main() {
     return 0;
 }
 
-/* Describe: this function is used for split the str by sep into strs, 
- *  while the count of strs will be returned by strc
- * 
- * Input:
- *  str: string to be split
- *  sep: split by sep
- * Output:
- *  strs: the split strs
- *  strc: the count of split strs
- */ 
-void split_strs(char* str, const char* sep, /* in */
-                char** strs, int* strc /* out */) {
-    *strc = 0;
-    char* token = strtok(str, sep);
-    while(token != NULL) {
-        strs[(*strc)++] = token;
-        token = strtok(NULL, sep);
-    }
-    strs[*strc] = NULL;
-}
 
 /*
  * Describe: get the value of according parameter in str,
@@ -196,18 +182,20 @@ int redirect(char* out_fname, char* in_fname, int out_flag, int in_flag) {
     int fd;
     /* if >, >>, < is used */
     if(in_flag == 1) {
-        close(0);
         fd = open(in_fname, O_RDONLY);
+        dup2(fd, 0);
     }
     if(out_flag == 2) {
-        close(1);
         fd = open(out_fname, O_RDWR|O_CREAT|O_APPEND, 0666);
+        dup2(fd, 1);
     }
     else if(out_flag == 1) {
-        close(1);
+        //close(1);
         fd = open(out_fname, O_WRONLY|O_CREAT|O_TRUNC, 0666);
+        dup2(fd, 1);
     }
 }
+
 
 /* Describe: execute a command, but without pipe "|".
  *  But <, >, >> are allowed.
@@ -218,47 +206,29 @@ int redirect(char* out_fname, char* in_fname, int out_flag, int in_flag) {
  *  -1: file isn't found
  *  0: normal
  */ 
-int exec_cmd(char* cmd, int will_fork) {
-    /* check if <, >, >> in command */
-    char* out_fname = NULL;
-    char* in_fname = NULL;
-    int out_flag = 0, in_flag = 0;
-
-    if(out_fname = get_parameter(cmd, ">>", false)) {
-        out_flag = 2;
-    }
-    else if(out_fname = get_parameter(cmd, ">", false)) {
-        out_flag = 1;
-    }
-    if(in_fname = get_parameter(cmd, "<", false)) {
-        in_flag = 1;
-    }
-
-    /* dealing command */
-    int argc = 0;
-    char** args = (char**)calloc(ARG_NUM, sizeof(char*));
-    split_strs(cmd, " \n", args, &argc);
+int exec_cmd(command* cmd, int will_fork) {
+    
     /* no command */
-    if (!args[0])
+    if (!cmd->args[0])
         return 0;
 
     /* built-in command */
-    if (strcmp(args[0], "cd") == 0) {
+    if (strcmp(cmd->args[0], "cd") == 0) {
         printf("cd!\n");
-        if (args[1])
-            chdir(args[1]);
+        if (cmd->args[1])
+            chdir(cmd->args[1]);
         return 0;
     }
-    if (strcmp(args[0], "pwd") == 0) {
+    if (strcmp(cmd->args[0], "pwd") == 0) {
         char wd[CMD_SIZE];
         puts(getcwd(wd, CMD_SIZE));
         return 0;
     }
-    if (strcmp(args[0], "export") == 0) {
-        for (int i = 1; args[i] != NULL; i++) {
+    if (strcmp(cmd->args[0], "export") == 0) {
+        for (int i = 1; cmd->args[i] != NULL; i++) {
             /* deal with each variables */
-            char *name = args[i];
-            char *value = args[i] + 1;
+            char *name = cmd->args[i];
+            char *value = cmd->args[i] + 1;
             while (*value != '\0' && *value != '=')
                 value++;
             *value = '\0';
@@ -267,7 +237,7 @@ int exec_cmd(char* cmd, int will_fork) {
         }
         return 0;
     }
-    if (strcmp(args[0], "exit") == 0)
+    if (strcmp(cmd->args[0], "exit") == 0)
         exit(0);
 
     
@@ -276,9 +246,8 @@ int exec_cmd(char* cmd, int will_fork) {
         signal(SIGINT, sig_handler);
         pid_t pid = fork();
         if (pid == 0) {
-            printf("cmd{%s}\n", cmd);
-            if(redirect(out_fname, in_fname, out_flag, in_flag) == -1) exit(255);
-            execvp(args[0], args);
+            redir(cmd);
+            execvp(cmd->args[0], cmd->args);
             exit(255);
         }
         else {
@@ -288,39 +257,14 @@ int exec_cmd(char* cmd, int will_fork) {
         }
     }
     else {
-        if(redirect(out_fname, in_fname, out_flag, in_flag) == -1) exit(255);
-        execvp(args[0], args);
+        redir(cmd);
+        execvp(cmd->args[0], cmd->args);
         exit(255);
     }
     return 0;
 }
 
-/*
- * Describe: checkout whether the files needed exist
- * Input:
- *  cmd: the command to be checked
- * Return
- *  true: exist
- *  false: not exist
- */ 
-int checkfile(char* cmd) {
-    char* cmd_cpy = (char*)calloc(strlen(cmd), sizeof(char));
-    char* in_fname = NULL;
-    if(in_fname = get_parameter(cmd, "<", true)) {
-        int fd;
-        fd = open(in_fname, O_RDONLY);
-        if(fd != -1) {
-            close(fd);
-            return true;
-        }
-        else {
-            close(fd);
-            printf("The file {%s} isn't found!\n", in_fname);
-            return false;
-        }
-    }
-    return true;
-}
+
 
 /*
  * the signal handler
