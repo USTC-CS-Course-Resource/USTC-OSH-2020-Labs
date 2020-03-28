@@ -19,6 +19,8 @@
 #define ARG_SIZE 256
 #define CMD_NUM 128
 #define REDIR_NUM 10
+#define TEMPFILE_NUM 10
+#define LINE_SIZE 4096
 
 #define true 1
 #define false 0
@@ -28,6 +30,7 @@ typedef struct redirection {
     int fd[2];
     int mode;
     int toclose;
+    char* tempfile;
 } redirection;
 
 typedef struct command {
@@ -45,5 +48,5 @@ int pattern_recogize(const char* arg, const char* sep);
 redirection* check_redir(const char* arg, const char* nextarg);
 int redir(command* cmd);
 command* deal_cmd(const char* raw_cmd);
-int close_redir(command* cmd);
+int close_unlink_redir(command* cmd);
 #endif

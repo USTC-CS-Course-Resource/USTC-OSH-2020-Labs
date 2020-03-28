@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <setjmp.h>
+#include <sys/socket.h>
 #include "command.h"
 
 #define INPUT_SIZE 256
@@ -37,7 +38,6 @@ int main() {
     char cwd[PWD_SIZE];
     /* count for the commands */
     int cmdc = 0;
-    
     /* set SIGINT for Ctrl+C */
     sh_pid = getpid();
 
@@ -58,13 +58,13 @@ int main() {
         fgets(input, INPUT_SIZE, stdin);
         
         /* check if pipe isn't used in input */
+        command* cmd;
         if(!strstr(input, "|")) {
-            if(!deal_cmd(input)) {
+            if(!(cmd = deal_cmd(input))) {
                 continue;
             }
-            command* cmd = deal_cmd(input);
             exec_cmd(cmd, true);
-            close_redir(cmd);
+            close_unlink_redir(cmd);
             continue;
         }
 
@@ -114,7 +114,7 @@ int main() {
                 if(!cmd) {
                     break;
                 }
-                close_redir(cmd);
+                close_unlink_redir(cmd);
                 if(i < cmdc - 1) {
                     close(fds[i][1]);
                 }
@@ -207,7 +207,6 @@ int redirect(char* out_fname, char* in_fname, int out_flag, int in_flag) {
  *  0: normal
  */ 
 int exec_cmd(command* cmd, int will_fork) {
-    
     /* no command */
     if (!cmd->args[0])
         return 0;
@@ -263,8 +262,6 @@ int exec_cmd(command* cmd, int will_fork) {
     }
     return 0;
 }
-
-
 
 /*
  * the signal handler

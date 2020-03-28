@@ -49,6 +49,8 @@ int pattern_recogize(const char* arg, const char* sep) {
 }
 
 /*
+ * Note: there must be a ' ' between operator and string.
+ *  if "<<<" or "<<" is used, the pipe won't work.
  * -1: error
  * x>> string, x>>y, >> string: 1
  * x>&y: 2
@@ -71,12 +73,18 @@ redirection* check_redir(const char* arg, const char* nextarg) {
             redir->toclose = redir->fd[0];
         }
         else if(ptn == 2) {
-            sscanf(arg, "%d>>", &redir->fd[0]);
+            if(sscanf(arg, "%d>>", &redir->fd[0]) < 1) {
+                printf("some error found around >>\n");
+                redir->mode = -1;
+            }
             redir->fd[0] = open(nextarg, O_WRONLY|O_CREAT|O_APPEND, 0666);
             redir->toclose = redir->fd[0];
         }
         else if(ptn == 3) {
-            sscanf(arg, "%d>>%d", &redir->fd[1], &redir->fd[0]);
+            if(sscanf(arg, "%d>>%d", &redir->fd[1], &redir->fd[0]) < 2) {
+                printf("some error found around >>\n");
+                redir->mode = -1;
+            }
         }
         else {
             printf("error!\n");
@@ -86,7 +94,10 @@ redirection* check_redir(const char* arg, const char* nextarg) {
     }
     else if(strstr(arg, ">&")) {
         redir->mode = 2;
-        sscanf(arg, "%d>&%d", &redir->fd[0], &redir->fd[1]);
+        if(sscanf(arg, "%d>%d", &redir->fd[1], &redir->fd[0]) < 2) {
+            printf("some error found around >\n");
+            redir->mode = -1;
+        }
         return redir;
     }
     if(strstr(arg, ">")) {
@@ -98,12 +109,18 @@ redirection* check_redir(const char* arg, const char* nextarg) {
             redir->toclose = redir->fd[0];
         }
         else if(ptn == 2) {
-            sscanf(arg, "%d>", &redir->fd[0]);
+            if(sscanf(arg, "%d>", &redir->fd[0]) < 1) {
+                printf("some error found around >\n");
+                redir->mode = -1;
+            }
             redir->fd[0] = open(nextarg, O_WRONLY|O_CREAT|O_TRUNC, 0666);
             redir->toclose = redir->fd[0];
         }
         else if(ptn == 3) {
-            sscanf(arg, "%d>%d", &redir->fd[1], &redir->fd[0]);
+            if(sscanf(arg, "%d>%d", &redir->fd[1], &redir->fd[0]) < 2) {
+                printf("some error found around >\n");
+                redir->mode = -1;
+            }
         }
         else {
             printf("error!\n");
@@ -114,18 +131,57 @@ redirection* check_redir(const char* arg, const char* nextarg) {
     else if(strstr(arg, "<<<")) {
         redir->mode = 4;
         redir->fd[1] = 0;
-        //TODO
+        redir->tempfile = (char*)calloc(20, sizeof(char)); 
+        strcpy(redir->tempfile, ".temp.XXXXXX");
+	    redir->fd[0] = mkstemp(redir->tempfile);
+        redir->fd[1] = 0;
+        write(redir->fd[0], nextarg, strlen(nextarg));
+        write(redir->fd[0], "\n", 1);
+        close(redir->fd[0]);
+        /* will redir later */
+        redir->toclose = redir->fd[0];
+        if((redir->fd[0] = open(redir->tempfile, O_RDONLY, 0666)) == -1) {
+            printf("can not find the file: %s\n", nextarg);
+            redir->mode = -1;
+        }
         return redir;
     }
     else if(strstr(arg, "<<")) {
         redir->mode = 5;
         redir->fd[1] = 0;
-        //TODO
+        redir->tempfile = (char*)calloc(20, sizeof(char)); 
+        strcpy(redir->tempfile, ".temp.XXXXXX");
+	    redir->fd[0] = mkstemp(redir->tempfile);
+        redir->fd[1] = 0;
+        char* sig = (char*)calloc(strlen(nextarg)+2, sizeof(char));
+        strcpy(sig, nextarg);
+        sig[strlen(nextarg)] = '\n';
+        sig[strlen(nextarg)+1] = '\0';
+        char* input = (char*)calloc(LINE_SIZE, sizeof(char));
+        while(1) {
+            printf("> ");
+            fflush(stdin);
+            fgets(input, LINE_SIZE, stdin);
+            if(strcmp(input, sig) == 0) {
+                break;
+            }
+            write(redir->fd[0], input, strlen(input));
+        }
+        close(redir->fd[0]);
+        /* will redir later */
+        redir->toclose = redir->fd[0];
+        if((redir->fd[0] = open(redir->tempfile, O_RDONLY, 0666)) == -1) {
+            printf("can not find the file: %s\n", nextarg);
+            redir->mode = -1;
+        }
         return redir;
     }
     else if(strstr(arg, "<&")) {
         redir->mode = 6;
-        sscanf(arg, "%d<&%d", &redir->fd[0], &redir->fd[1]);
+        if(sscanf(arg, "%d<&%d", &redir->fd[0], &redir->fd[1]) < 2) {
+            printf("some error found around >\n");
+            redir->mode = -1;
+        }
         return redir;
     }
     else if(strstr(arg, "<")) {
@@ -140,7 +196,10 @@ redirection* check_redir(const char* arg, const char* nextarg) {
             }
         }
         else if(ptn == 2) {
-            sscanf(arg, "%d<", &redir->fd[0]);
+            if(sscanf(arg, "%d<", &redir->fd[0]) < 1) {
+                printf("some error found around >\n");
+                redir->mode = -1;
+            }
             redir->toclose = redir->fd[0];
             if((redir->fd[0] = open(nextarg, O_RDONLY, 0666)) == -1) {
                 printf("can not find the file: %s\n", nextarg);
@@ -148,7 +207,10 @@ redirection* check_redir(const char* arg, const char* nextarg) {
             }
         }
         else if(ptn == 3) {
-            sscanf(arg, "%d<%d", &redir->fd[1], &redir->fd[0]);
+            if(sscanf(arg, "%d<%d", &redir->fd[1], &redir->fd[0]) < 2) {
+                printf("some error found around >\n");
+                redir->mode = -1;
+            }
         }
         else {
             printf("error!\n");
@@ -189,6 +251,8 @@ command* deal_cmd(const char* raw_cmd) {
             cmd->argc++;
         }
     }
+
+    /* add empty command for strang situations */
     if(cmd->argc == 0) {
         cmd->args[0] = (char*)calloc(2, sizeof(char));
         cmd->args[0][0] = ' ';
@@ -202,8 +266,13 @@ int redir(command* cmd) {
     }
 }
 
-int close_redir(command* cmd) {
+int close_unlink_redir(command* cmd) {
     for(int i = 0; i < cmd->redirc; i++) {
+        /* unlink the tempfile */
+        if(cmd->redirs[i]->tempfile) {
+            unlink(cmd->redirs[i]->tempfile);
+        }
+        /* close the fd/file */
         if(cmd->redirs[i]->toclose) {
             close(cmd->redirs[i]->toclose);
         }
