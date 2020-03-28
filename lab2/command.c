@@ -24,10 +24,11 @@ void split_strs(const char* str, const char* sep, /* in */
 }
 
 /*
- * error: -1
- * 1: < (filename)
- * 2: x<
- * 3: x<&y
+ * Return:
+ *  error: -1
+ *  1: < (filename)
+ *  2: x<
+ *  3: x<&y
  */
 int pattern_recogize(const char* arg, const char* sep) {
     char* suffix;
@@ -49,16 +50,20 @@ int pattern_recogize(const char* arg, const char* sep) {
 }
 
 /*
- * Note: there must be a ' ' between operator and string.
+ * Note: 
+ *  There must be a ' ' between operator and string.
  *  if "<<<" or "<<" is used, the pipe won't work.
- * -1: error
- * x>> string, x>>y, >> string: 1
- * x>&y: 2
- * x> string: 3
- * x<<< string: 4
- * x<< string: 5
- * x<&y: 6
- * x< string: 7
+ *  This won't support the '-'(like "1>&-"), 
+ *  if you really need it, please use '0'(like "1>&0") instead.
+ * Return:
+ *  -1: error
+ *  x>> string, x>>y, >> string: 1
+ *  x>&y: 2
+ *  x> string: 3
+ *  x<<< string: 4
+ *  x<< string: 5
+ *  x<&y: 6
+ *  x< string: 7
  */ 
 redirection* check_redir(const char* arg, const char* nextarg) {
     redirection* redir = (redirection*)malloc(sizeof(redirection));
@@ -94,7 +99,7 @@ redirection* check_redir(const char* arg, const char* nextarg) {
     }
     else if(strstr(arg, ">&")) {
         redir->mode = 2;
-        if(sscanf(arg, "%d>%d", &redir->fd[1], &redir->fd[0]) < 2) {
+        if(sscanf(arg, "%d>&%d", &redir->fd[1], &redir->fd[0]) < 2) {
             printf("some error found around >\n");
             redir->mode = -1;
         }
@@ -131,6 +136,7 @@ redirection* check_redir(const char* arg, const char* nextarg) {
     else if(strstr(arg, "<<<")) {
         redir->mode = 4;
         redir->fd[1] = 0;
+        /* create a tempfile to store the input */
         redir->tempfile = (char*)calloc(20, sizeof(char)); 
         strcpy(redir->tempfile, ".temp.XXXXXX");
 	    redir->fd[0] = mkstemp(redir->tempfile);
@@ -149,14 +155,17 @@ redirection* check_redir(const char* arg, const char* nextarg) {
     else if(strstr(arg, "<<")) {
         redir->mode = 5;
         redir->fd[1] = 0;
+        /* create a tempfile to store the input */
         redir->tempfile = (char*)calloc(20, sizeof(char)); 
         strcpy(redir->tempfile, ".temp.XXXXXX");
 	    redir->fd[0] = mkstemp(redir->tempfile);
         redir->fd[1] = 0;
+        /* set the signal to compare with to decide whether to stop */
         char* sig = (char*)calloc(strlen(nextarg)+2, sizeof(char));
         strcpy(sig, nextarg);
         sig[strlen(nextarg)] = '\n';
         sig[strlen(nextarg)+1] = '\0';
+        /* input loop*/
         char* input = (char*)calloc(LINE_SIZE, sizeof(char));
         while(1) {
             printf("> ");
@@ -221,6 +230,9 @@ redirection* check_redir(const char* arg, const char* nextarg) {
     return NULL;
 }
 
+/*
+ * Deal the raw_cmd string into command struct, and return it.
+ */ 
 command* deal_cmd(const char* raw_cmd) {
     /* initialize and split*/
     command* cmd = malloc(sizeof(command));
@@ -260,12 +272,18 @@ command* deal_cmd(const char* raw_cmd) {
     return cmd;
 }
 
+/*
+ * do the redirecting according to the cmd->redirs
+ */ 
 int redir(command* cmd) {
     for(int i = 0; i < cmd->redirc; i++) {
         dup2(cmd->redirs[i]->fd[0], cmd->redirs[i]->fd[1]);
     }
 }
 
+/*
+ * do the closing and unlinking of the redirected file or something else.
+ */ 
 int close_unlink_redir(command* cmd) {
     for(int i = 0; i < cmd->redirc; i++) {
         /* unlink the tempfile */

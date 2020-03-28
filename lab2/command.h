@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <setjmp.h>
+#include <sys/socket.h>
 
 #define INPUT_SIZE 256
 #define PWD_SIZE 4096
