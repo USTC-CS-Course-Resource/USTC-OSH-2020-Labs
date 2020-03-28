@@ -24,10 +24,6 @@
 #define false 0
 
 int exec_cmd(command* cmd, int will_fork);
-int redirect_pre(char* cmd, char* out_fname, char* in_fname, int* out_flag, int* in_flag);
-int redirect(char* out_fname, char* in_fname, int out_flag, int in_flag);
-int checkfile(char* cmd);
-char* get_parameter(char* str, const char* para, int keep);
 void sig_handler(int signo);
 
 jmp_buf jump_buffer;
@@ -126,76 +122,6 @@ int main() {
 
     return 0;
 }
-
-
-/*
- * Describe: get the value of according parameter in str,
- *  and this parameter and the value will be removed from str 
- *  if keep == true
- */
-char* get_parameter(char* str, const char* para, int keep) {
-    char chars[] = " \t\n";
-    char temp[2] = "a";
-    char* pvalue;
-    if(pvalue = strstr(str, para)) {
-        if(keep == false) {
-            *pvalue = '\0';
-        }
-        pvalue += strlen(para);
-        
-        int len = strlen(pvalue);
-        for(int i = 0; i < len; i++) {
-            temp[0] = pvalue[0];
-            if(strstr(chars, temp)) {
-                pvalue++;
-            }
-            else {
-                break;
-            }
-        }
-        char* others = pvalue;
-        len = strlen(others);
-        for(int i = 0; i < len; i++, others++) {
-            temp[0] = others[0];
-            if(strstr(chars, temp)) {
-                others[0] = '\0';
-                break;
-            }
-        }
-        char* final_value = (char*)calloc(strlen(pvalue)+1, sizeof(char));
-        final_value = strcpy(final_value, pvalue);
-        others[0] = ' ';
-        if(keep == true) {
-            return final_value;
-        }
-        strcat(str, others);
-
-        return final_value;
-    }
-    return NULL;
-}
-
-/*
- * Describe: redirect according to the parameters
- */
-int redirect(char* out_fname, char* in_fname, int out_flag, int in_flag) {
-    int fd;
-    /* if >, >>, < is used */
-    if(in_flag == 1) {
-        fd = open(in_fname, O_RDONLY);
-        dup2(fd, 0);
-    }
-    if(out_flag == 2) {
-        fd = open(out_fname, O_RDWR|O_CREAT|O_APPEND, 0666);
-        dup2(fd, 1);
-    }
-    else if(out_flag == 1) {
-        //close(1);
-        fd = open(out_fname, O_WRONLY|O_CREAT|O_TRUNC, 0666);
-        dup2(fd, 1);
-    }
-}
-
 
 /* Describe: execute a command, but without pipe "|".
  *  But <, >, >> are allowed.
