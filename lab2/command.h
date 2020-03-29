@@ -12,6 +12,8 @@
 #include <signal.h>
 #include <setjmp.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include<arpa/inet.h>
 
 #define INPUT_SIZE 256
 #define PWD_SIZE 4096
@@ -36,11 +38,11 @@ typedef struct redirection {
 
 typedef struct command {
     char* raw_cmd;
-    char** args; // without redirs
-    int argc;
-    redirection** redirs;
-    int redirc;
-    char* file_not_found;
+    char** args; /* without redirs */
+    int argc; /* count of args */
+    redirection** redirs; /* redirections */
+    int redirc; /* count of redirections */
+    char* file_not_found; /* file_not_found */
 } command;
 
 void split_strs(const char* str, const char* sep, /* in */

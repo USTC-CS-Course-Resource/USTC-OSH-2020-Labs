@@ -28,7 +28,6 @@ void sig_handler(int signo);
 
 jmp_buf jump_buffer;
 pid_t sh_pid;
-int i = 1;
 int main() {
     /* current work directory */
     char cwd[PWD_SIZE];
@@ -37,17 +36,16 @@ int main() {
     /* set SIGINT for Ctrl+C */
     sh_pid = getpid();
 
-
     /* jumpback if get SIGINT*/
     sigsetjmp(jump_buffer, 1);
     signal(SIGINT, sig_handler);
-    while (i++) {
+    while (1) {
         /* the input from the shell */
         char* input = (char*)calloc(INPUT_SIZE, sizeof(char));
         /* command prompt */
         getcwd(cwd, PWD_SIZE);
         fflush(stdout);
-        printf("\033[1m\033[32mRabbit%d\033[0m:\033[1m\033[35m%s\033[0m# ", i, cwd);
+        printf("\033[1m\033[32mRabbit\033[0m:\033[1m\033[35m%s\033[0m# ", cwd);
         
         /* get the input */
         fflush(stdin);
@@ -63,73 +61,74 @@ int main() {
             close_unlink_redir(cmd);
             continue;
         }
-
         /* pipe used in input */
-        /* get the commands */
-        char** cmds = (char**)calloc(CMD_NUM, sizeof(char*));
-        int cmdc = 0;
-        split_strs(input, "|\n", cmds, &cmdc);
+        else {
+            /* get the commands */
+            char** cmds = (char**)calloc(CMD_NUM, sizeof(char*));
+            int cmdc = 0;
+            split_strs(input, "|\n", cmds, &cmdc);
 
-        /* initialize the pipes */
-        int fds[cmdc-1][2];
-        for(int i = 0; i < cmdc-1; i++) {
-            pipe(fds[i]);
-        }
-        
-        /* execute and connect the pipes */
-        for(int i = 0; i < cmdc; i++) {
-            /* get split args of each command */
-            char** args = (char**)calloc(ARG_NUM, sizeof(char*));
-            int argc = 0;
+            /* initialize the pipes */
+            int fds[cmdc-1][2];
+            for(int i = 0; i < cmdc-1; i++) {
+                pipe(fds[i]);
+            }
+            
+            /* execute and connect the pipes */
+            for(int i = 0; i < cmdc; i++) {
+                /* get split args of each command */
+                char** args = (char**)calloc(ARG_NUM, sizeof(char*));
+                int argc = 0;
 
-            command* cmd = deal_cmd(cmds[i]);
-            pid_t pid = fork();
-            if(pid < 0) {
-                printf("error: can't fork!\n");
-                exit(2);
+                command* cmd = deal_cmd(cmds[i]);
+                pid_t pid = fork();
+                if(pid < 0) {
+                    printf("error: can't fork!\n");
+                    exit(2);
+                }
+                else if(pid == 0) {
+                    if(!cmd) {
+                        printf("here\n");
+                    }
+                    /* connect the pipes */
+                    if(i != 0) {
+                        dup2(fds[i-1][0], 0);
+                        close(fds[i-1][0]);
+                    }
+                    if(i < cmdc - 1) {
+                        dup2(fds[i][1], 1);
+                    }
+                    /* execute the command */
+                    if(exec_cmd(cmd, false) == -1) {
+                        exit(255);
+                    }
+                }
+                else {
+                    waitpid(pid, NULL, 0);
+                    if(!cmd) {
+                        break;
+                    }
+                    close_unlink_redir(cmd);
+                    if(i < cmdc - 1) {
+                        close(fds[i][1]);
+                    }
+                }
+                free(args);
             }
-            else if(pid == 0) {
-                if(!cmd) {
-                    printf("here\n");
-                }
-                /* connect the pipes */
-                if(i != 0) {
-                    dup2(fds[i-1][0], 0);
-                    close(fds[i-1][0]);
-                }
-                if(i < cmdc - 1) {
-                    dup2(fds[i][1], 1);
-                }
-                /* execute the command */
-                if(exec_cmd(cmd, false) == -1) {
-                    exit(255);
-                }
-            }
-            else {
-                waitpid(pid, NULL, 0);
-                if(!cmd) {
-                    break;
-                }
-                close_unlink_redir(cmd);
-                if(i < cmdc - 1) {
-                    close(fds[i][1]);
-                }
-            }
-            free(args);
+            free(cmds);
         }
-        free(cmds);
+
     }
 
     return 0;
 }
 
 /* Describe: execute a command, but without pipe "|".
- *  But <, >, >> are allowed.
+ *  But most redirections are allowed.
  * Input:
  *  cmd: the command to be execute
  *  will_fork: whether the external command will execute in a child process
  * Return:
- *  -1: file isn't found
  *  0: normal
  */ 
 int exec_cmd(command* cmd, int will_fork) {
@@ -194,7 +193,7 @@ int exec_cmd(command* cmd, int will_fork) {
  */ 
 void sig_handler(int signo)
 {
-    printf("haha\r\n");
+    printf("\r\n");
     if(signo ==  SIGINT)
     {
         if(sh_pid == getpid()) {
@@ -205,3 +204,5 @@ void sig_handler(int signo)
         }
     }
 }
+  
+#include <sys/stat.h>  

@@ -50,40 +50,42 @@ int pattern_recogize(const char* arg, const char* sep) {
 }
 
 /*
- * Note: 
- *  There must be a ' ' between operator and string.
+ * Note: there must be a ' ' between operator and string.
  *  if "<<<" or "<<" is used, the pipe won't work.
- *  This won't support the '-'(like "1>&-"), 
- *  if you really need it, please use '0'(like "1>&0") instead.
  * Return:
  *  -1: error
- *  x>> string, x>>y, >> string: 1
- *  x>&y: 2
- *  x> string: 3
- *  x<<< string: 4
- *  x<< string: 5
- *  x<&y: 6
- *  x< string: 7
+ * `x>> filename`, `x>>y`, `>> filename`
+ * `x>&y`
+ * `x> filename`, `x>y`, `> filename`
+ * `x<<< filename`
+ * `x<< filename`
+ * `x<&y`
+ * `x< filename`, `x<y`, `< filename`
  */ 
 redirection* check_redir(const char* arg, const char* nextarg) {
     redirection* redir = (redirection*)malloc(sizeof(redirection));
     redir->toclose = 0;
 
+    /* set fd for >> */
     if(strstr(arg, ">>")) {
         redir->mode = 1;
         redir->fd[1] = 1;
         int ptn = pattern_recogize(arg, ">>");
-        if(ptn == 1) {
-            redir->fd[0] = open(nextarg, O_WRONLY|O_CREAT|O_APPEND, 0666);
-            redir->toclose = redir->fd[0];
-        }
-        else if(ptn == 2) {
-            if(sscanf(arg, "%d>>", &redir->fd[0]) < 1) {
+        if(ptn == 1 || ptn == 2) {
+            if(ptn == 2) {
+                if(sscanf(arg, "%d>>", &redir->fd[1]) < 1) {
+                    printf("some error found around >\n");
+                    redir->mode = -1;
+                }
+            }
+            if(!nextarg) {
                 printf("some error found around >>\n");
                 redir->mode = -1;
             }
-            redir->fd[0] = open(nextarg, O_WRONLY|O_CREAT|O_APPEND, 0666);
-            redir->toclose = redir->fd[0];
+            else {
+                redir->fd[0] = open(nextarg, O_WRONLY|O_CREAT|O_APPEND, 0666);
+                redir->toclose = redir->fd[0];
+            }
         }
         else if(ptn == 3) {
             if(sscanf(arg, "%d>>%d", &redir->fd[1], &redir->fd[0]) < 2) {
@@ -97,28 +99,60 @@ redirection* check_redir(const char* arg, const char* nextarg) {
         }
         return redir;
     }
+    /* set fd for >& */
     else if(strstr(arg, ">&")) {
         redir->mode = 2;
         if(sscanf(arg, "%d>&%d", &redir->fd[1], &redir->fd[0]) < 2) {
-            printf("some error found around >\n");
+            printf("some error found around >&\n");
             redir->mode = -1;
         }
         return redir;
     }
+    /* set fd for > */
     if(strstr(arg, ">")) {
         redir->mode = 3;
         redir->fd[1] = 1;
         int ptn = pattern_recogize(arg, ">");
-        if(ptn == 1) {
-            redir->fd[0] = open(nextarg, O_WRONLY|O_CREAT|O_TRUNC, 0666);
-            redir->toclose = redir->fd[0];
-        }
-        else if(ptn == 2) {
-            if(sscanf(arg, "%d>", &redir->fd[0]) < 1) {
-                printf("some error found around >\n");
-                redir->mode = -1;
+        if(ptn == 1 || ptn == 2) {
+            if(ptn == 2) {
+                if(sscanf(arg, "%d>", &redir->fd[1]) < 1) {
+                    printf("get %s\n", arg);
+                    printf("some error found around >\n");
+                    redir->mode = -1;
+                }
             }
-            redir->fd[0] = open(nextarg, O_WRONLY|O_CREAT|O_TRUNC, 0666);
+            int addr[5];
+            /* check whether it's file or a /dev/tcp */
+            if(sscanf(nextarg, "/dev/tcp/%d.%d.%d.%d/%d", &addr[0], &addr[1], &addr[2], &addr[3], &addr[4] ) == 5) {
+                /* get address */
+                char address[20] = {'\0'};
+                sprintf(address, "%d.%d.%d.%d", addr[0], addr[1], addr[2], addr[3]);
+                /* socket */
+                int fd = socket(AF_INET, SOCK_STREAM/* for TCP */, 0);
+                /* set sockaddr_in */
+                struct sockaddr_in sin;  
+                bzero(&sin, sizeof(sin));
+                sin.sin_family = AF_INET;
+                sin.sin_port = htons(addr[4]);
+                inet_pton(AF_INET, address, &sin.sin_addr);
+                //Connect to remote server
+                if (connect(fd , (struct sockaddr *)&sin , sizeof(sin)) < 0)
+                {
+                    printf("cannot connect to %s/%d\n", address, addr[4]);
+                    redir->mode = -1;
+                }
+                redir->fd[0] = fd;
+            }
+            else {
+                if(!nextarg) {
+                    printf("some error found around >\n");
+                    redir->mode = -1;
+                }
+                else {
+                    redir->fd[0] = open(nextarg, O_WRONLY|O_CREAT|O_APPEND, 0666);
+                    redir->toclose = redir->fd[0];
+                }
+            }
             redir->toclose = redir->fd[0];
         }
         else if(ptn == 3) {
@@ -133,6 +167,7 @@ redirection* check_redir(const char* arg, const char* nextarg) {
         }
         return redir;
     }
+    /* set fd for <<< */
     else if(strstr(arg, "<<<")) {
         redir->mode = 4;
         redir->fd[1] = 0;
@@ -141,17 +176,24 @@ redirection* check_redir(const char* arg, const char* nextarg) {
         strcpy(redir->tempfile, ".temp.XXXXXX");
 	    redir->fd[0] = mkstemp(redir->tempfile);
         redir->fd[1] = 0;
-        write(redir->fd[0], nextarg, strlen(nextarg));
-        write(redir->fd[0], "\n", 1);
-        close(redir->fd[0]);
-        /* will redir later */
-        redir->toclose = redir->fd[0];
-        if((redir->fd[0] = open(redir->tempfile, O_RDONLY, 0666)) == -1) {
-            printf("can not find the file: %s\n", nextarg);
+        if(!nextarg) {
+            printf("some error found around <<<\n");
             redir->mode = -1;
+        }
+        else {
+            write(redir->fd[0], nextarg, strlen(nextarg));
+            write(redir->fd[0], "\n", 1);
+            close(redir->fd[0]);
+            /* will redir later */
+            redir->toclose = redir->fd[0];
+            if((redir->fd[0] = open(redir->tempfile, O_RDONLY, 0666)) == -1) {
+                printf("can not find the file: %s\n", nextarg);
+                redir->mode = -1;
+            }
         }
         return redir;
     }
+    /* set fd for << */
     else if(strstr(arg, "<<")) {
         redir->mode = 5;
         redir->fd[1] = 0;
@@ -161,30 +203,37 @@ redirection* check_redir(const char* arg, const char* nextarg) {
 	    redir->fd[0] = mkstemp(redir->tempfile);
         redir->fd[1] = 0;
         /* set the signal to compare with to decide whether to stop */
-        char* sig = (char*)calloc(strlen(nextarg)+2, sizeof(char));
-        strcpy(sig, nextarg);
-        sig[strlen(nextarg)] = '\n';
-        sig[strlen(nextarg)+1] = '\0';
-        /* input loop*/
-        char* input = (char*)calloc(LINE_SIZE, sizeof(char));
-        while(1) {
-            printf("> ");
-            fflush(stdin);
-            fgets(input, LINE_SIZE, stdin);
-            if(strcmp(input, sig) == 0) {
-                break;
-            }
-            write(redir->fd[0], input, strlen(input));
-        }
-        close(redir->fd[0]);
-        /* will redir later */
-        redir->toclose = redir->fd[0];
-        if((redir->fd[0] = open(redir->tempfile, O_RDONLY, 0666)) == -1) {
-            printf("can not find the file: %s\n", nextarg);
+        if(!nextarg) {
+            printf("some error found around <<\n");
             redir->mode = -1;
+        }
+        else {
+            char* sig = (char*)calloc(strlen(nextarg)+2, sizeof(char));
+            strcpy(sig, nextarg);
+            sig[strlen(nextarg)] = '\n';
+            sig[strlen(nextarg)+1] = '\0';
+            /* input loop*/
+            char* input = (char*)calloc(LINE_SIZE, sizeof(char));
+            while(1) {
+                printf("> ");
+                fflush(stdin);
+                fgets(input, LINE_SIZE, stdin);
+                if(strcmp(input, sig) == 0) {
+                    break;
+                }
+                write(redir->fd[0], input, strlen(input));
+            }
+            close(redir->fd[0]);
+            /* will redir later */
+            redir->toclose = redir->fd[0];
+            if((redir->fd[0] = open(redir->tempfile, O_RDONLY, 0666)) == -1) {
+                printf("can not find the file: %s\n", nextarg);
+                redir->mode = -1;
+            }
         }
         return redir;
     }
+    /* set fd for <& */
     else if(strstr(arg, "<&")) {
         redir->mode = 6;
         if(sscanf(arg, "%d<&%d", &redir->fd[0], &redir->fd[1]) < 2) {
@@ -193,26 +242,59 @@ redirection* check_redir(const char* arg, const char* nextarg) {
         }
         return redir;
     }
+    /* set fd for < */
     else if(strstr(arg, "<")) {
         redir->mode = 7;
         redir->fd[1] = 0;
         int ptn = pattern_recogize(arg, "<");
-        if(ptn == 1) {
-            redir->toclose = redir->fd[0];
-            if((redir->fd[0] = open(nextarg, O_RDONLY, 0666)) == -1) {
-                printf("can not find the file: %s\n", nextarg);
-                redir->mode = -1;
-            }
-        }
-        else if(ptn == 2) {
-            if(sscanf(arg, "%d<", &redir->fd[0]) < 1) {
-                printf("some error found around >\n");
-                redir->mode = -1;
+        if(ptn == 1 || ptn == 2) {
+            if(ptn == 2) {
+                if(sscanf(arg, "%d<", &redir->fd[1]) < 1) {
+                    printf("some error found around >\n");
+                    redir->mode = -1;
+                }
             }
             redir->toclose = redir->fd[0];
-            if((redir->fd[0] = open(nextarg, O_RDONLY, 0666)) == -1) {
-                printf("can not find the file: %s\n", nextarg);
+            int addr[5];
+            /* check whether it's file or a /dev/tcp */
+            if(!nextarg) {
+                printf("some error found around <\n");
                 redir->mode = -1;
+            }
+            else {
+                if(sscanf(nextarg, "/dev/tcp/%d.%d.%d.%d/%d", &addr[0], &addr[1], &addr[2], &addr[3], &addr[4] ) == 5) {
+                    /* get address */
+                    char address[20] = {'\0'};
+                    sprintf(address, "%d.%d.%d.%d", addr[0], addr[1], addr[2], addr[3]);
+                    /* socket */
+                    int fd = socket(AF_INET, SOCK_STREAM/* for TCP */, 0);
+                    /* set sockaddr_in */
+                    struct sockaddr_in sin;  
+                    bzero(&sin, sizeof(sin));
+                    sin.sin_family = AF_INET;
+                    sin.sin_port = htons(addr[4]);
+                    inet_pton(AF_INET, address, &sin.sin_addr);
+                    //Connect to remote server
+                    if (connect(fd , (struct sockaddr *)&sin , sizeof(sin)) < 0)
+                    {
+                        printf("cannot connect to %s/%d\n", address, addr[4]);
+                        redir->mode = -1;
+                    }
+                    redir->fd[0] = fd;
+                }
+                else {
+                    if(!nextarg) {
+                        printf("some error found around <<\n");
+                        redir->mode = -1;
+                    }
+                    else {
+                        if((redir->fd[0] = open(nextarg, O_RDONLY, 0666)) == -1) {
+                            printf("can not find the file: %s\n", nextarg);
+                            redir->mode = -1;
+                        }
+                    }
+                }
+                redir->toclose = redir->fd[0];
             }
         }
         else if(ptn == 3) {
