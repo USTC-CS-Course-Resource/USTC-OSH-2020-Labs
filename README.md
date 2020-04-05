@@ -27,4 +27,5 @@ lab2
 ├── README.md
 ├── sh
 ├── shell.c
+├── test
 ```
