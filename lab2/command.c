@@ -149,7 +149,7 @@ redirection* check_redir(const char* arg, const char* nextarg) {
                     redir->mode = -1;
                 }
                 else {
-                    redir->fd[0] = open(nextarg, O_WRONLY|O_CREAT|O_APPEND, 0666);
+                    redir->fd[0] = open(nextarg, O_WRONLY|O_CREAT|O_TRUNC, 0666);
                     redir->toclose = redir->fd[0];
                 }
             }
@@ -359,8 +359,13 @@ command* deal_cmd(const char* raw_cmd) {
  */ 
 int redir(command* cmd) {
     for(int i = 0; i < cmd->redirc; i++) {
+        if(fcntl(cmd->redirs[i]->fd[0], F_GETFD, 0) < 0) {
+            printf("invalid file descriptor: %d\n", cmd->redirs[i]->fd[0]);
+            return -1;
+        }
         dup2(cmd->redirs[i]->fd[0], cmd->redirs[i]->fd[1]);
     }
+    return 0;
 }
 
 /*

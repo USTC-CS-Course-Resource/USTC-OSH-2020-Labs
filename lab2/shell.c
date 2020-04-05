@@ -119,7 +119,6 @@ int main() {
         }
 
     }
-
     return 0;
 }
 
@@ -127,7 +126,7 @@ int main() {
  *  But most redirections are allowed.
  * Input:
  *  cmd: the command to be execute
- *  will_fork: whether the external command will execute in a child process
+ *  will_fork: whether the command will be executed in a new child process
  * Return:
  *  0: normal
  */ 
@@ -170,7 +169,9 @@ int exec_cmd(command* cmd, int will_fork) {
         signal(SIGINT, sig_handler);
         pid_t pid = fork();
         if (pid == 0) {
-            redir(cmd);
+            if(redir(cmd) == -1) {
+                exit(255);
+            }
             execvp(cmd->args[0], cmd->args);
             exit(255);
         }
@@ -181,7 +182,9 @@ int exec_cmd(command* cmd, int will_fork) {
         }
     }
     else {
-        redir(cmd);
+        if(redir(cmd) == -1) {
+            exit(255);
+        }
         execvp(cmd->args[0], cmd->args);
         exit(255);
     }
@@ -204,5 +207,3 @@ void sig_handler(int signo)
         }
     }
 }
-  
-#include <sys/stat.h>  
