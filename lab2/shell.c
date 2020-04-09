@@ -14,14 +14,12 @@
 #include <sys/socket.h>
 #include "command.h"
 
-#define INPUT_SIZE 256
-#define PWD_SIZE 4096
-#define CMD_SIZE 256
-#define ARG_NUM 128
-#define CMD_NUM 128
-
+#ifndef true
 #define true 1
+#endif
+#ifndef false
 #define false 0
+#endif
 
 int exec_cmd(command* cmd, int will_fork);
 void sig_handler(int signo);
@@ -36,17 +34,15 @@ int main() {
     /* set SIGINT for Ctrl+C */
     sh_pid = getpid();
 
-    /* jumpback if get SIGINT*/
-    sigsetjmp(jump_buffer, 1);
     signal(SIGINT, sig_handler);
     while (1) {
-        /* the input from the shell */
-        char* input = (char*)calloc(INPUT_SIZE, sizeof(char));
         /* command prompt */
         getcwd(cwd, PWD_SIZE);
         fflush(stdout);
         printf("\033[1m\033[32mRabbit\033[0m:\033[1m\033[35m%s\033[0m# ", cwd);
         
+        /* the input from the shell */
+        char* input = (char*)calloc(INPUT_SIZE, sizeof(char));
         /* get the input */
         fflush(stdin);
         fgets(input, INPUT_SIZE, stdin);
@@ -196,14 +192,19 @@ int exec_cmd(command* cmd, int will_fork) {
  */ 
 void sig_handler(int signo)
 {
-    printf("\r\n");
+    int status;
+    pid_t pid = waitpid(0, &status, WNOHANG);
     if(signo ==  SIGINT)
     {
-        if(sh_pid == getpid()) {
-            siglongjmp(jump_buffer, 2);
+        if(pid == -1) {
+            char cwd[PWD_SIZE];
+            getcwd(cwd, PWD_SIZE);
+            fprintf(stderr, "\n\033[1m\033[32mRabbit\033[0m:\033[1m\033[35m%s\033[0m# ", cwd);
+            return;
         }
         else {
-            exit(1);
+            write(2, "\n", 1);
+            return;
         }
     }
 }

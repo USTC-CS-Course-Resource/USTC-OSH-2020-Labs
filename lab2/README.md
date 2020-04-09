@@ -248,36 +248,25 @@ cat < /dev/tcp/127.0.0.1/1234
 首先假设一下C文件编译出了可执行文件`test`
 
 ```c
-#include <stdio.h>
+#include <unistd.h>
+#include <string.h>
 
 int main() {
-    fprintf(stderr, "error\n");
-    fprintf(stdout, "out\n");
+    char str[100] = {0};
+    read(20, str, 99);
+    write(10, str, strlen(str));
     return 0;
 }
 ```
 
 这里的可执行文件`test`已上传到相同目录下, 可以直接调用.
 
-然后分别运行以下命令
-
-执行
+然后执行
 ```bash
-./test 1> errout.txt
+./test 30< hello.txt 20<&30 40> out.txt 10>&40
 ```
-则`error`被输出到终端, `out`被写入到`errout.txt`
+则`hello.txt`的内容被输出到`out.txt`中.
 
-执行
-```bash
-./test 2> errout.txt
-```
-则`out`被输出到终端, `error`被写入到`errout.txt`
-
-执行
-```bash
-./test > errout.txt 2>&1
-```
-则`error`和`out`都被写入到`errout.txt`
 
 #### 其他重定向(`<<`, `<<<`)
 
@@ -288,7 +277,6 @@ cat << EOF
 this
 output
 EOF
-
 ```
 
 > <a id="echoproblem">注(前述回显问题)</a>：这里如果直接复制进去, 会产生类似下面的结果, 但影响不大,且并非本课重点, 就没再修改了. 

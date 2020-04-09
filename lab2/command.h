@@ -13,7 +13,7 @@
 #include <setjmp.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include<arpa/inet.h>
+#include <arpa/inet.h>
 
 #define INPUT_SIZE 256
 #define PWD_SIZE 4096

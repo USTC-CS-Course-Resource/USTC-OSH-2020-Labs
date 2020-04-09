@@ -28,7 +28,6 @@ void split_strs(const char* str, const char* sep, /* in */
  *  error: -1
  *  1: < (filename)
  *  2: x<
- *  3: x<&y
  */
 int pattern_recogize(const char* arg, const char* sep) {
     char* suffix;
@@ -42,9 +41,6 @@ int pattern_recogize(const char* arg, const char* sep) {
     }
     else if(suffix_len == sep_len) {
         return 2;
-    }
-    else {
-        return 3;
     }
     return -1;
 }
@@ -155,12 +151,6 @@ redirection* check_redir(const char* arg, const char* nextarg) {
             }
             redir->toclose = redir->fd[0];
         }
-        else if(ptn == 3) {
-            if(sscanf(arg, "%d>%d", &redir->fd[1], &redir->fd[0]) < 2) {
-                printf("some error found around >\n");
-                redir->mode = -1;
-            }
-        }
         else {
             printf("error!\n");
             return NULL;
@@ -216,7 +206,6 @@ redirection* check_redir(const char* arg, const char* nextarg) {
             char* input = (char*)calloc(LINE_SIZE, sizeof(char));
             while(1) {
                 printf("> ");
-                fflush(stdin);
                 fgets(input, LINE_SIZE, stdin);
                 if(strcmp(input, sig) == 0) {
                     break;
@@ -236,7 +225,7 @@ redirection* check_redir(const char* arg, const char* nextarg) {
     /* set fd for <& */
     else if(strstr(arg, "<&")) {
         redir->mode = 6;
-        if(sscanf(arg, "%d<&%d", &redir->fd[0], &redir->fd[1]) < 2) {
+        if(sscanf(arg, "%d<&%d", &redir->fd[1], &redir->fd[0]) < 2) {
             printf("some error found around >\n");
             redir->mode = -1;
         }
@@ -295,12 +284,6 @@ redirection* check_redir(const char* arg, const char* nextarg) {
                     }
                 }
                 redir->toclose = redir->fd[0];
-            }
-        }
-        else if(ptn == 3) {
-            if(sscanf(arg, "%d<%d", &redir->fd[1], &redir->fd[0]) < 2) {
-                printf("some error found around >\n");
-                redir->mode = -1;
             }
         }
         else {
