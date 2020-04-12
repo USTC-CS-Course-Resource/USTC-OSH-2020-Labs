@@ -160,38 +160,25 @@ redirection* check_redir(const char* arg, const char* nextarg) {
     /* set fd for <<< */
     else if(strstr(arg, "<<<")) {
         redir->mode = 4;
-        redir->fd[1] = 0;
-        /* create a tempfile to store the input */
-        redir->tempfile = (char*)calloc(20, sizeof(char)); 
-        strcpy(redir->tempfile, ".temp.XXXXXX");
-	    redir->fd[0] = mkstemp(redir->tempfile);
-        redir->fd[1] = 0;
+        pipe(redir->fd);
         if(!nextarg) {
             printf("some error found around <<<\n");
             redir->mode = -1;
         }
         else {
-            write(redir->fd[0], nextarg, strlen(nextarg));
-            write(redir->fd[0], "\n", 1);
-            close(redir->fd[0]);
+            write(redir->fd[1], nextarg, strlen(nextarg));
+            write(redir->fd[1], "\n", 1);
+            close(redir->fd[1]);
             /* will redir later */
             redir->toclose = redir->fd[0];
-            if((redir->fd[0] = open(redir->tempfile, O_RDONLY, 0666)) == -1) {
-                printf("can not find the file: %s\n", nextarg);
-                redir->mode = -1;
-            }
+            redir->fd[1] = STDIN_FILENO;
         }
         return redir;
     }
     /* set fd for << */
     else if(strstr(arg, "<<")) {
         redir->mode = 5;
-        redir->fd[1] = 0;
-        /* create a tempfile to store the input */
-        redir->tempfile = (char*)calloc(20, sizeof(char)); 
-        strcpy(redir->tempfile, ".temp.XXXXXX");
-	    redir->fd[0] = mkstemp(redir->tempfile);
-        redir->fd[1] = 0;
+        pipe(redir->fd);
         /* set the signal to compare with to decide whether to stop */
         if(!nextarg) {
             printf("some error found around <<\n");
@@ -210,15 +197,12 @@ redirection* check_redir(const char* arg, const char* nextarg) {
                 if(strcmp(input, sig) == 0) {
                     break;
                 }
-                write(redir->fd[0], input, strlen(input));
+                write(redir->fd[1], input, strlen(input));
             }
-            close(redir->fd[0]);
+            close(redir->fd[1]);
             /* will redir later */
             redir->toclose = redir->fd[0];
-            if((redir->fd[0] = open(redir->tempfile, O_RDONLY, 0666)) == -1) {
-                printf("can not find the file: %s\n", nextarg);
-                redir->mode = -1;
-            }
+            redir->fd[1] = STDIN_FILENO;
         }
         return redir;
     }
