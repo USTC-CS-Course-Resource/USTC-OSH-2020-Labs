@@ -10,4 +10,7 @@ lab2/**
 !lab2/shell.c
 !lab2/README.md
 !lab2/test
+lab3/**
+!lab3/1.c
+!lab3/Makefile
 
