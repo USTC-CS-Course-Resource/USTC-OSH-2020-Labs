@@ -11,7 +11,7 @@
 #define MESSAGE_SIZE 1048576
 #define BUF_SIZE 1048576
 
-#define USER_SIZE 32
+#define USER_SIZE 2
 #define true 1
 #define false 0
 
@@ -54,6 +54,9 @@ int main(int argc, char **argv) {
     while(1) {
         /* 阻塞等待accept */
         int new_accept = accept(fd, NULL, NULL);
+        char prompt[50];
+        sprintf(prompt, "[Server] Connecting...\n");
+        send(new_accept, prompt, strlen(prompt), 0);
         /* 加accept锁 */
         pthread_mutex_lock(&accept_mutex);
         /* 等待accept条件变量 */
@@ -68,6 +71,8 @@ int main(int argc, char **argv) {
         }
         user_num++;
         pthread_t thread;
+        sprintf(prompt, "[Server] Connect successfully! Your fd is: %d\n", new_accept);
+        send(new_accept, prompt, strlen(prompt), 0);
         printf("<<<<<<<<<<<<<<<<<<<<A user(fd: %d) has connnected! The current user_num: %d Byte(s).\n", *accept_fd, user_num);
         pthread_create(&thread, NULL, handle_chat, (void*)accept_fd);
         pthread_detach(thread);
@@ -81,7 +86,7 @@ void *handle_chat(void *data) {
     int* pfrom = (int*)data;
     int from = *(int*)data;
     char prompt[30];
-    sprintf(prompt, "Message(from %d): ", from);
+    sprintf(prompt, "[Message(from %d)] ", from);
     char buffer[BUF_SIZE+1] = {0};
     ssize_t recv_size;
     int finish = true;
