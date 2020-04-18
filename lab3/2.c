@@ -15,25 +15,17 @@
 #define true 1
 #define false 0
 
-typedef struct Forward_Arg {
-    int from;
-    int to;
-    int* buffer;
-    ssize_t recv_size;
-    int finish;
-} Forward_Arg;
-
 int accept_fds[USER_SIZE];
 int user_num = 0;
 int buffer[BUF_SIZE];
+
+/* mutexes and conds */
 pthread_mutex_t accept_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t send_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t accept_cond = PTHREAD_COND_INITIALIZER;
+
 void *handle_chat(void *data);
 int* fdalloc(int* fds);
-int* forward(void* arg);
-
-
 
 int main(int argc, char **argv) {
     int port = atoi(argv[1]);

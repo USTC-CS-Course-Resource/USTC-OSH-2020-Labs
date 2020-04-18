@@ -77,24 +77,11 @@ void *handle_chat(void *data) {
 int main(int argc, char **argv) {
     int port = atoi(argv[1]);
     int fd;
-    int snd_size = 0;   /* 发送缓冲区大小 */ 
-    int rcv_size = 0;    /* 接收缓冲区大小 */ 
-    socklen_t optlen;    /* 选项值长度 */ 
 
     if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
         perror("socket");
         return 1;
     }
-
-    /*getsockopt(fd, SOL_SOCKET, SO_SNDBUF,&snd_size, &optlen); 
-    snd_size = 1;
-    rcv_size = 1;
-    setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &snd_size, optlen); 
-    setsockopt(fd,SOL_SOCKET,SO_RCVBUF, &rcv_size, optlen); 
-    getsockopt(fd, SOL_SOCKET, SO_SNDBUF,&snd_size, &optlen); 
-    getsockopt(fd, SOL_SOCKET, SO_RCVBUF,&rcv_size, &optlen); 
-    printf(" 发送缓冲区大小为: %d 字节\n",snd_size); 
-    printf(" 接收缓冲区大小为: %d 字节\n",rcv_size); */
     
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
