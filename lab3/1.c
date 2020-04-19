@@ -30,7 +30,6 @@ void *handle_chat(void *data) {
     ssize_t recv_size_accu = 0;
     while ((recv_size = recv(pipe->fd_send, buffer, BUF_SIZE, 0)) > 0) {
         recv_size_accu += recv_size;
-        printf("多收到:%ld, 累计收到: %ld\n", recv_size, recv_size_accu);
         char* message = buffer;
         char* p = NULL;
         while(true) {
@@ -44,10 +43,6 @@ void *handle_chat(void *data) {
                 *p = '\0';
                 size_t message_len = strlen(message);
                 size_t sent_len = send(pipe->fd_recv, message, strlen(message), 0);
-                printf("if  正常应发%ld, 实发%ld\n", message_len, sent_len);
-                if(sent_len != message_len) {
-                    printf("\nif  发送{%s}时出现问题, 应发%ld, 实发%ld\n\n", message, message_len, sent_len);
-                }
                 send(pipe->fd_recv, "\n", 1, 0);
                 message = p + 1;
                 finish = true;
@@ -60,10 +55,6 @@ void *handle_chat(void *data) {
                 /* 整条message中不存在换行符, 直接发送, 并break */
                 size_t message_len = strlen(message);
                 size_t sent_len = send(pipe->fd_recv, message, strlen(message), 0);
-                    printf("else正常应发%ld, 实发%ld\n", message_len, sent_len);
-                if(sent_len != message_len) {
-                    printf("\nelse发送{%s}时出现问题, 应发%ld, 实发%ld\n\n", message, message_len, sent_len);
-                }
                 memset(buffer, 0, sizeof(char)*(BUF_SIZE+1));
                 finish = false;
                 break;

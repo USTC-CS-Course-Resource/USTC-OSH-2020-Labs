@@ -11,7 +11,7 @@
 #define MESSAGE_SIZE 1048576
 #define BUF_SIZE 1048576
 
-#define USER_SIZE 32
+#define USER_SIZE 2
 #define true 1
 #define false 0
 
