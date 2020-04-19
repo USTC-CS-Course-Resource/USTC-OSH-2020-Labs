@@ -11,13 +11,13 @@
 #define MESSAGE_SIZE 1048576
 #define BUF_SIZE 1048576
 
-#define USER_SIZE 2
+#define USER_SIZE 32
 #define true 1
 #define false 0
 
 int accept_fds[USER_SIZE];
 int user_num = 0;
-int buffer[BUF_SIZE];
+char buffer[BUF_SIZE+1] = {0};
 
 /* mutexes and conds */
 pthread_mutex_t accept_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -87,14 +87,14 @@ void *handle_chat(void *data) {
     int from = *(int*)data;
     char prompt[30];
     sprintf(prompt, "[Message(from %d)] ", from);
-    char buffer[BUF_SIZE+1] = {0};
+    //char buffer[BUF_SIZE+1] = {0};
     ssize_t recv_size;
     int finish = true;
     ssize_t recv_size_accu = 0;
     while ((recv_size = recv(from, buffer, BUF_SIZE, 0)) > 0) {
         int temp_finish = finish;
         recv_size_accu += recv_size;
-        printf("Server received %ld Byte(s) from %d. The cumulative received: %ld\n", recv_size, from, recv_size_accu);
+        printf("[Server] received %ld Byte(s) from %d. The cumulative received: %ld\n", recv_size, from, recv_size_accu);
         
         /* 加发送锁 */
         pthread_mutex_lock(&send_mutex);
@@ -103,7 +103,7 @@ void *handle_chat(void *data) {
             temp_finish = finish;
             char* message = buffer;
             char* p = NULL;
-            printf("<<<<<<<sending from %d to %d\n", from, accept_fds[i]);
+            printf("<<<<<sending from %d to %d\n", from, accept_fds[i]);
             while(true) {
                 if(temp_finish == true) {
                     /* 若上一次发送已经结束, 则在此发送新"Message:"提示 */
@@ -114,7 +114,7 @@ void *handle_chat(void *data) {
                     /* 说明整个message中还存在换行, 在pos处 */
                     size_t message_len = (size_t)(p-message);
                     size_t send_len = send(accept_fds[i], message, (size_t)(p-message), 0);
-                    printf("\tif  : %ld Byte(s) should be transmitted. %ld Byte(s) has been transmitted.\n", message_len, send_len);
+                    printf("\t%ld Byte(s) / %ld Byte(s) transmitted.\n", message_len, send_len);
                     send(accept_fds[i], "\n", 1, 0);
                     message = p + 1;
                     temp_finish = true;
@@ -124,12 +124,12 @@ void *handle_chat(void *data) {
                     /* 整条message中不存在换行符, 直接发送, 并break */
                     size_t message_len = strlen(message);
                     size_t send_len = send(accept_fds[i], message, strlen(message), 0);
-                    printf("\telse: %ld Byte(s) should be transmitted. %ld Byte(s) has been transmitted.\n", message_len, send_len);
+                    printf("\t%ld Byte(s) / %ld Byte(s) transmitted.\n", message_len, send_len);
                     temp_finish = false;
                     break;
                 }
             }
-            printf("Transmitting from %d to %d finished.>>>>>>>\n", from, accept_fds[i]);
+            printf("Transmitting from %d to %d finished.>>>>>\n", from, accept_fds[i]);
         }
         finish = temp_finish;
         memset(buffer, 0, sizeof(char)*(BUF_SIZE+1));
