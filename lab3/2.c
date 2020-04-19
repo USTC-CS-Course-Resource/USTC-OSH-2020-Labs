@@ -34,7 +34,10 @@ int main(int argc, char **argv) {
         perror("socket");
         return 1;
     }
-    
+    int on = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int));
+    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(int));
+
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
