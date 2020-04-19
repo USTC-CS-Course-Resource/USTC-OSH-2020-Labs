@@ -13,5 +13,7 @@ lab2/**
 lab3/**
 !lab3/1.c
 !lab3/2.c
+!lab3/3.c
 !lab3/Makefile
+
 
