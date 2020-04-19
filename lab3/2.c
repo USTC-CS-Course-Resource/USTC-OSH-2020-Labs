@@ -17,7 +17,6 @@
 
 int accept_fds[USER_SIZE];
 int user_num = 0;
-char buffer[BUF_SIZE+1] = {0};
 
 /* mutexes and conds */
 pthread_mutex_t accept_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -73,7 +72,7 @@ int main(int argc, char **argv) {
         pthread_t thread;
         sprintf(prompt, "[Server] Connect successfully! Your fd is: %d\n", new_accept);
         send(new_accept, prompt, strlen(prompt), 0);
-        printf("<<<<<<<<<<<<<<<<<<<<A user(fd: %d) has connnected! The current user_num: %d Byte(s).\n", *accept_fd, user_num);
+        printf("<<<<<<<<<<<<<<<<<<<<A user(fd: %d) has connnected! The current user_num: %d.\n", *accept_fd, user_num);
         pthread_create(&thread, NULL, handle_chat, (void*)accept_fd);
         pthread_detach(thread);
         pthread_mutex_unlock(&accept_mutex);
@@ -87,7 +86,7 @@ void *handle_chat(void *data) {
     int from = *(int*)data;
     char prompt[30];
     sprintf(prompt, "[Message(from %d)] ", from);
-    //char buffer[BUF_SIZE+1] = {0};
+    char buffer[BUF_SIZE+1] = {0};
     ssize_t recv_size;
     int finish = true;
     ssize_t recv_size_accu = 0;
