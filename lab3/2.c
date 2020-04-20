@@ -159,6 +159,7 @@ void *handle_chat(void *data) {
     *pfrom = 0;
     user_num--;
     close(from);
+    free(buffer);
     printf("User(fd:%d) has exited! The current user_num: %d.>>>>>>>>>>>>>>>>>>>>\n", from, user_num);
     pthread_cond_signal(&accept_cond);
     pthread_mutex_unlock(&accept_mutex);
