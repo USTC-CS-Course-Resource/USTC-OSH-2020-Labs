@@ -11,7 +11,6 @@
 #include <errno.h>
 
 #define MESSAGE_SIZE 1048576
-#define BUF_SIZE 1048576
 
 #define USER_SIZE 32
 #define true 1
@@ -21,6 +20,7 @@ int user_num = 0;
 int accept_fds[USER_SIZE] = {0};
 struct timeval timeout = {0, 0};
 int finishes[USER_SIZE];
+int BUF_SIZE = 16384;
 
 int* fdalloc(int* fds);
 int get_max_fd(int* fds);
@@ -37,6 +37,12 @@ int main(int argc, char **argv) {
     }
     int on = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int));
+    int opt_val = 0;
+    int opt_len = sizeof(opt_len);
+    getsockopt(fd, SOL_SOCKET, SO_SNDBUF, (char*)&opt_val, &opt_len);
+    BUF_SIZE = opt_val;
+    getsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char*)&opt_val, &opt_len);
+    BUF_SIZE = opt_val > BUF_SIZE ? BUF_SIZE : opt_val;
 
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK); /* 设置服务器fd为非阻塞 */
     struct sockaddr_in addr;
@@ -66,22 +72,17 @@ int main(int argc, char **argv) {
 int forward() {
     int sending = false;
     for(int i = 0; i < USER_SIZE; i++) {
-        update_accept_fd(i);
         if(accept_fds[i] == 0) continue;
+        int from = accept_fds[i];
         /* select 测试是否有可以接受数据的客户端 */
         fd_set* client = (fd_set*)malloc(sizeof(fd_set));
         FD_ZERO(client);
-        for(int i = 0; i < USER_SIZE; i++) {
-            if(accept_fds[i] == 0) continue;
-            FD_SET(accept_fds[i], client);
-        }
-        if(select(get_max_fd(accept_fds) + 1, client, NULL, NULL, &timeout) > 0) {
-            int from = accept_fds[i];
+        FD_SET(from, client);
+        if(select(from + 1, client, NULL, NULL, &timeout) > 0) {
             char prompt[30];
             sprintf(prompt, "[Message(from %d)] ", from);
-            char buffer[BUF_SIZE+1] = {0};
-            if(accept_fds[i] == 0) continue;
-            if(FD_ISSET(accept_fds[i], client)) {
+            char* buffer = (char*)calloc(BUF_SIZE + 1, sizeof(char));
+            if(FD_ISSET(from, client)) {
                 /* try recv */
                 ssize_t recv_size = recv(from, buffer, BUF_SIZE, 0);
                 if(recv_size <= 0) continue;
@@ -90,34 +91,37 @@ int forward() {
                 printf("[Server] received %ld Byte(s) from %d.\n", recv_size, from);
                 /* 开始转发 */
                 for(int j = 0; j < USER_SIZE; j++) {
-                    update_accept_fd(j);
                     if(accept_fds[j] == 0 || accept_fds[j] == from) continue;
+                    int to = accept_fds[j];
+                    fd_set* wrtiefds = (fd_set*)malloc(sizeof(fd_set));
+                    FD_ZERO(wrtiefds); FD_SET(to, wrtiefds);
                     while(1) {
-                        if(select(get_max_fd(accept_fds) + 1, NULL, client, NULL, NULL) > 0) {
-                            if(FD_ISSET(accept_fds[i], client)) break;
+                        if(select(to + 1, NULL, wrtiefds, NULL, NULL) > 0) {
+                            if(FD_ISSET(to, wrtiefds)) break;
                         }
                     }
                     temp_finish = finishes[i];
                     char* message = buffer;
                     char* p = NULL;
-                    printf("<<<<<sending from %d to %d\n", from, accept_fds[j]);
+                    printf("<<<<<sending from %d to %d\n", from, to);
                     while(true) {
                         if(temp_finish == true) {
                             /* 若上一次发送已经结束, 则在此发送新"Message:"提示 */
                             temp_finish = false;
-                            send(accept_fds[j], prompt, strlen(prompt), 0);
+                            send(to, prompt, strlen(prompt), MSG_NOSIGNAL);
                         }
                         if((p = strchr(message, '\n')) != NULL) {
                             /* 说明整个message中还存在换行, 在pos处 */
                             size_t message_len = (size_t)(p-message);
                             size_t send_len;
-                            while((send_len = send(accept_fds[j], message, (size_t)(p-message), 0)) == -1) {
+                            /* 循环发送直到成功或客户端断开连接 */
+                            while((send_len = send(to, message, (size_t)(p-message), MSG_NOSIGNAL)) == -1) {
                                 if(update_accept_fd(j) == -1) break;
                             }
-                            printf("\t%ld Byte(s) / %ld Byte(s) transmitted.\n", message_len, send_len);
-                            while(send(accept_fds[j], "\n", 1, 0) == -1) {
+                            while(send(to, "\n", 1, MSG_NOSIGNAL) == -1) {
                                 if(update_accept_fd(j) == -1) break;
-                            }
+                            } 
+                            printf("\t1 %ld Byte(s) / %ld Byte(s) transmitted.\n", send_len, message_len);
                             message = p + 1;
                             temp_finish = true;
                             if(message >= buffer + recv_size) break;
@@ -126,20 +130,23 @@ int forward() {
                             /* 整条message中不存在换行符, 直接发送, 并break */
                             size_t message_len = strlen(message);
                             size_t send_len;
-                            while((send_len = send(accept_fds[j], message, strlen(message), 0)) == -1) {
+                            /* 循环发送直到成功或客户端断开连接 */
+                            while((send_len = send(to, message, message_len, MSG_NOSIGNAL)) == -1) {
                                 if(update_accept_fd(j) == -1) break;
                             }
-                            printf("\t%ld Byte(s) / %ld Byte(s) transmitted.\n", message_len, send_len);
+                            printf("\t2 %ld Byte(s) / %ld Byte(s) transmitted.\n", send_len, message_len);
                             temp_finish = false;
                             break;
                         }
                     }
-                    printf("Transmitting from %d to %d finished.>>>>>\n", from, accept_fds[j]);
+                    printf("Transmitting from %d to %d finished.>>>>>\n", from, to);
                 }
                 finishes[i] = temp_finish;
                 memset(buffer, 0, sizeof(char)*(BUF_SIZE+1));
             }
-        }        
+            free(buffer);
+        }    
+        free(client);    
     }
     return sending;
 }
@@ -157,22 +164,24 @@ int try_accept(int fd) {
     fcntl(new_accept, F_SETFL, fcntl(new_accept, F_GETFL, 0) | O_NONBLOCK); /* 设置客户端为非阻塞 */
     *accept_fd = new_accept;
     user_num++;
+    printf("<<<<<<<<<<<<<<<<<<<<A user(fd: %d) has connnected! The current user_num: %d Byte(s).\n", *accept_fd, user_num);
+
     if(update_accept_fd(accept_fd-accept_fds) == -1) return -1;
 
     char prompt[50];
     sprintf(prompt, "[Server] Connecting...\n");
-    send(new_accept, prompt, strlen(prompt), 0);
-    
+    send(new_accept, prompt, strlen(prompt), MSG_NOSIGNAL);
     sprintf(prompt, "[Server] Connect successfully! Your fd is: %d\n", new_accept);
-    send(new_accept, prompt, strlen(prompt), 0);
-    printf("<<<<<<<<<<<<<<<<<<<<A user(fd: %d) has connnected! The current user_num: %d Byte(s).\n", *accept_fd, user_num);
+    send(new_accept, prompt, strlen(prompt), MSG_NOSIGNAL);
 }
 
 int update_accept_fd(int index) {
     if(accept_fds[index]== 0) return 0;
     char temp[32]; 
     ssize_t recv_size = 0;
-    if((recv_size = recv(accept_fds[index], temp, sizeof(temp), MSG_PEEK | MSG_DONTWAIT)) <= 0 && recv_size != -1) {
+    extern int errno;
+    recv_size = recv(accept_fds[index], temp, sizeof(temp), MSG_PEEK | MSG_DONTWAIT);
+    if(((errno == EPIPE || errno == ECONNRESET) && recv_size < 0) || recv_size == 0) {
         user_num--;
         finishes[index] = true;
         printf("User(fd:%d) has exited! The current user_num: %d.>>>>>>>>>>>>>>>>>>>>\n", accept_fds[index], user_num);
