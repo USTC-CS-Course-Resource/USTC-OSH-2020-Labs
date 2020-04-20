@@ -29,3 +29,14 @@ lab2
 ├── shell.c
 ├── test
 ```
+
+## the File Structure of lab3
+
+```bash
+lab3
+├── 1.c
+├── 2.c
+├── 3.c
+├── Makefile
+├── README.md
+```
