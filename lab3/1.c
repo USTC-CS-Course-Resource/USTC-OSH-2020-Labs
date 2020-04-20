@@ -40,16 +40,12 @@ void *handle_chat(void *data) {
             }
             if((p = strchr(message, '\n')) != NULL) {
                 /* 说明整个message中还存在换行, 在pos处 */
-                *p = '\0';
                 size_t message_len = strlen(message);
-                size_t sent_len = send(pipe->fd_recv, message, strlen(message), 0);
+                size_t sent_len = send(pipe->fd_recv, message, p - message, 0);
                 send(pipe->fd_recv, "\n", 1, 0);
                 message = p + 1;
                 finish = true;
-                if(message >= buffer + recv_size) {
-                    memset(buffer, 0, sizeof(char)*(BUF_SIZE+1));
-                    break;
-                }
+                if(message >= buffer + recv_size) break;
             }
             else {
                 /* 整条message中不存在换行符, 直接发送, 并break */
@@ -59,7 +55,8 @@ void *handle_chat(void *data) {
                 finish = false;
                 break;
             }
-        }   
+        }
+        memset(buffer, 0, sizeof(char)*(BUF_SIZE+1));
     }
     return NULL;
 }
