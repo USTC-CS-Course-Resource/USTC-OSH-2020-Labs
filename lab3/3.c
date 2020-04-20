@@ -27,6 +27,7 @@ int get_max_fd(int* fds);
 int try_accept(int fd);
 int update_accept_fd(int index);
 int forward();
+int send_till_ok(int fd_index, char* begin, char* end);
 
 int main(int argc, char **argv) {
     int port = atoi(argv[1]);
@@ -63,7 +64,7 @@ int main(int argc, char **argv) {
     FD_ZERO(&clients);
 
     for(int i = 0; i < USER_SIZE; i++) finishes[i] = true;
-    while(1) {
+    while(true) {
         if(!forward()) try_accept(fd);
     }
     return 0;
@@ -112,16 +113,9 @@ int forward() {
                         }
                         if((p = strchr(message, '\n')) != NULL) {
                             /* 说明整个message中还存在换行, 在pos处 */
-                            size_t message_len = (size_t)(p-message);
-                            size_t send_len;
-                            /* 循环发送直到成功或客户端断开连接 */
-                            while((send_len = send(to, message, (size_t)(p-message), MSG_NOSIGNAL)) == -1) {
-                                if(update_accept_fd(j) == -1) break;
-                            }
-                            while(send(to, "\n", 1, MSG_NOSIGNAL) == -1) {
-                                if(update_accept_fd(j) == -1) break;
-                            } 
-                            printf("\t1 %ld Byte(s) / %ld Byte(s) transmitted.\n", send_len, message_len);
+                            send_till_ok(j, message, p);
+                            char tempstr[] = "\n";
+                            send_till_ok(j, tempstr, tempstr + 1);
                             message = p + 1;
                             temp_finish = true;
                             if(message >= buffer + recv_size) break;
@@ -129,12 +123,7 @@ int forward() {
                         else {
                             /* 整条message中不存在换行符, 直接发送, 并break */
                             size_t message_len = strlen(message);
-                            size_t send_len;
-                            /* 循环发送直到成功或客户端断开连接 */
-                            while((send_len = send(to, message, message_len, MSG_NOSIGNAL)) == -1) {
-                                if(update_accept_fd(j) == -1) break;
-                            }
-                            printf("\t2 %ld Byte(s) / %ld Byte(s) transmitted.\n", send_len, message_len);
+                            send_till_ok(j, message, message + message_len);
                             temp_finish = false;
                             break;
                         }
@@ -151,6 +140,23 @@ int forward() {
     return sending;
 }
 
+int send_till_ok(int fd_index, char* begin, char* end) {
+    size_t message_len = (size_t)(end - begin);
+    int to = accept_fds[fd_index];
+    ssize_t send_len = 0;
+    /* 循环发送直到发送的数目正确了 */
+    while(true) {
+        /* 尝试发送 */
+        send_len = send(to, begin, (size_t)(end-begin), MSG_NOSIGNAL);
+        /* 若发现客户端已经断开, 则马上停止发送 */
+        if(update_accept_fd(fd_index) <= 0) break;
+        /* 移动begin指针到将继续发送的剩余部分 */
+        begin = send_len == -1 ? begin : begin + send_len;
+        if(begin == end) break;
+    }
+    printf("\t%ld Byte(s) / %ld Byte(s) transmitted.\n", send_len, message_len);
+}
+
 int try_accept(int fd) {
     for(int i = 0; i < USER_SIZE; i++) {
         update_accept_fd(i);
@@ -164,7 +170,7 @@ int try_accept(int fd) {
     fcntl(new_accept, F_SETFL, fcntl(new_accept, F_GETFL, 0) | O_NONBLOCK); /* 设置客户端为非阻塞 */
     *accept_fd = new_accept;
     user_num++;
-    printf("<<<<<<<<<<<<<<<<<<<<A user(fd: %d) has connnected! The current user_num: %d Byte(s).\n", *accept_fd, user_num);
+    printf("<<<<<<<<<<<<<<<<<<<<A user(fd: %d) has connnected! The current user_num: %d.\n", *accept_fd, user_num);
 
     if(update_accept_fd(accept_fd-accept_fds) == -1) return -1;
 
@@ -176,12 +182,13 @@ int try_accept(int fd) {
 }
 
 int update_accept_fd(int index) {
-    if(accept_fds[index]== 0) return 0;
+    if(accept_fds[index] == 0) return 0;
     char temp[32]; 
     ssize_t recv_size = 0;
     extern int errno;
     recv_size = recv(accept_fds[index], temp, sizeof(temp), MSG_PEEK | MSG_DONTWAIT);
-    if(((errno == EPIPE || errno == ECONNRESET) && recv_size < 0) || recv_size == 0) {
+    //printf("错误代码是: %d的recv_size=%d, errno=%d\n", accept_fds[index], recv_size, errno);
+    if(((errno == EPIPE || errno == ECONNRESET || errno == EBADF) && recv_size < 0) || recv_size == 0) {
         user_num--;
         finishes[index] = true;
         printf("User(fd:%d) has exited! The current user_num: %d.>>>>>>>>>>>>>>>>>>>>\n", accept_fds[index], user_num);
@@ -193,7 +200,14 @@ int update_accept_fd(int index) {
 }
 
 int* fdalloc(int* fds) {
-    for(int i = 0; i < USER_SIZE; i++) {
+    static int from = -1;
+    from = (from + USER_SIZE + 1) % USER_SIZE;
+    for(int i = from; i < USER_SIZE; i++) {
+        if(fds[i] == 0) {
+            return fds + i;
+        }
+    }
+    for(int i = 0; i < from; i++) {
         if(fds[i] == 0) {
             return fds + i;
         }
