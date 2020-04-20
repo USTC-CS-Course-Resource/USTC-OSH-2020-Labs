@@ -29,6 +29,7 @@ int* fdalloc(int* fds);
 int check_accept_fd(int index);
 int get_index(int* fds, int key);
 void print_fds();
+int send_till_ok(int fd_index, char* begin, char* end);
 
 int main(int argc, char **argv) {
     int port = atoi(argv[1]);
@@ -123,14 +124,9 @@ void *handle_chat(void *data) {
                     /* 说明整个message中还存在换行, 在pos处 */
                     size_t message_len = (size_t)(p-message);
                     size_t send_len;
-                    /* 循环发送直到成功或客户端断开连接 */
-                    while((send_len = send(accept_fds[i], message, (size_t)(p-message), MSG_NOSIGNAL)) == -1) {
-                        if(check_accept_fd(i) == -1) break;
-                    }
-                    while(send(accept_fds[i], "\n", 1, MSG_NOSIGNAL) == -1) {
-                        if(check_accept_fd(i) == -1) break;
-                    }
-                    printf("\t%ld Byte(s) / %ld Byte(s) transmitted.\n", send_len, message_len);
+                    send_till_ok(i, message, p);
+                    char tempstr[] = "\n";
+                    send_till_ok(i, tempstr, tempstr + 1);
                     message = p + 1;
                     temp_finish = true;
                     if(message >= buffer + recv_size)  break;
@@ -138,12 +134,7 @@ void *handle_chat(void *data) {
                 else {
                     /* 整条message中不存在换行符, 直接发送, 并break */
                     size_t message_len = strlen(message);
-                    size_t send_len;
-                    /* 循环发送直到成功或客户端断开连接 */
-                    while((send_len = send(accept_fds[i], message, strlen(message), MSG_NOSIGNAL)) == -1) {
-                        if(check_accept_fd(i) == -1) break;
-                    }
-                    printf("\t%ld Byte(s) / %ld Byte(s) transmitted.\n", send_len, message_len);
+                    send_till_ok(i, message, message + message_len);
                     temp_finish = false;
                     break;
                 }
@@ -166,6 +157,39 @@ void *handle_chat(void *data) {
     return NULL;
 }
 
+int send_till_ok(int fd_index, char* begin, char* end) {
+    size_t message_len = (size_t)(end - begin);
+    int to = accept_fds[fd_index];
+    ssize_t send_len = 0;
+    /* 循环发送直到发送的数目正确了 */
+    while(true) {
+        /* 尝试发送 */
+        extern int errno;
+        send_len = send(to, begin, (size_t)(end-begin), MSG_NOSIGNAL);
+        printf("%d try: %ld, errno:%d\n", to, send_len, errno);
+        /* 若发现客户端已经断开, 则马上停止发送 */
+        if(errno == EPIPE || errno == ECONNRESET || errno == EBADF) break;
+        if(check_accept_fd(fd_index) <= 0) break;
+        /* 移动begin指针到将继续发送的剩余部分 */
+        begin = send_len == -1 ? begin : begin + send_len;
+        if(begin == end) break;
+    }
+    printf("\t%ld Byte(s) / %ld Byte(s) transmitted.\n", send_len, message_len);
+}
+
+int check_accept_fd(int index) {
+    if(accept_fds[index]== 0) return 0;
+    char temp[32]; 
+    ssize_t recv_size = 0;
+    extern int errno;
+    recv_size = recv(accept_fds[index], temp, sizeof(temp), MSG_PEEK | MSG_DONTWAIT);
+    printf("错误代码是: %d的recv_size=%d, errno=%d\n", accept_fds[index], recv_size, errno);
+    if(((errno == EPIPE || errno == ECONNRESET || errno == EBADF) && recv_size < 0) || recv_size == 0) {
+        return -1;
+    }
+    return accept_fds[index];
+}
+
 int* fdalloc(int* fds) {
     for(int i = 0; i < USER_SIZE; i++) {
         if(fds[i] == 0) {
@@ -180,18 +204,6 @@ int get_index(int* fds, int key) {
         if(accept_fds[i] == key) return i;
     }
     return -1;
-}
-
-int check_accept_fd(int index) {
-    if(accept_fds[index]== 0) return 0;
-    char temp[32]; 
-    ssize_t recv_size = 0;
-    extern int errno;
-    recv_size = recv(accept_fds[index], temp, sizeof(temp), MSG_PEEK | MSG_DONTWAIT);
-    if(errno == EPIPE || errno == ECONNRESET) {
-        return -1;
-    }
-    return accept_fds[index];
 }
 
 void print_fds() {
