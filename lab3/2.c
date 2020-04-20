@@ -99,7 +99,7 @@ void *handle_chat(void *data) {
     int from = *(int*)data;
     char prompt[30];
     sprintf(prompt, "[Message(from %d)] ", from);
-    char* buffer = (char*)calloc(BUF_SIZE, sizeof(char));
+    char* buffer = (char*)calloc(BUF_SIZE + 1, sizeof(char));
     ssize_t recv_size;
     int finish = true;
     ssize_t recv_size_accu = 0;
