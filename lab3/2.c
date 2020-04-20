@@ -6,10 +6,10 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include <fcntl.h>
+#include <errno.h>
 
 /* Max message size in Byte */
 #define MESSAGE_SIZE 1048576
-#define BUF_SIZE 1048576
 
 #define USER_SIZE 32
 #define true 1
@@ -17,6 +17,7 @@
 
 int accept_fds[USER_SIZE];
 int user_num = 0;
+int BUF_SIZE = 0;
 
 /* mutexes and conds */
 pthread_mutex_t accept_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -25,6 +26,9 @@ pthread_cond_t accept_cond = PTHREAD_COND_INITIALIZER;
 
 void *handle_chat(void *data);
 int* fdalloc(int* fds);
+int check_accept_fd(int index);
+int get_index(int* fds, int key);
+void print_fds();
 
 int main(int argc, char **argv) {
     int port = atoi(argv[1]);
@@ -36,7 +40,13 @@ int main(int argc, char **argv) {
     }
     int on = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int));
-    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(int));
+
+    int opt_val = 0;
+    int opt_len = sizeof(opt_len);
+    getsockopt(fd, SOL_SOCKET, SO_SNDBUF, (char*)&opt_val, &opt_len);
+    BUF_SIZE = opt_val;
+    getsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char*)&opt_val, &opt_len);
+    BUF_SIZE = opt_val > BUF_SIZE ? BUF_SIZE : opt_val;
 
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
@@ -74,7 +84,7 @@ int main(int argc, char **argv) {
         user_num++;
         pthread_t thread;
         sprintf(prompt, "[Server] Connect successfully! Your fd is: %d\n", new_accept);
-        send(new_accept, prompt, strlen(prompt), 0);
+        send(new_accept, prompt, strlen(prompt), MSG_NOSIGNAL);
         printf("<<<<<<<<<<<<<<<<<<<<A user(fd: %d) has connnected! The current user_num: %d.\n", *accept_fd, user_num);
         pthread_create(&thread, NULL, handle_chat, (void*)accept_fd);
         pthread_detach(thread);
@@ -89,15 +99,12 @@ void *handle_chat(void *data) {
     int from = *(int*)data;
     char prompt[30];
     sprintf(prompt, "[Message(from %d)] ", from);
-    char buffer[BUF_SIZE+1] = {0};
+    char* buffer = (char*)calloc(BUF_SIZE, sizeof(char));
     ssize_t recv_size;
     int finish = true;
     ssize_t recv_size_accu = 0;
-    while ((recv_size = recv(from, buffer, BUF_SIZE, 0)) > 0) {
+    while((recv_size = recv(from, buffer, BUF_SIZE, 0)) > 0) {
         int temp_finish = finish;
-        recv_size_accu += recv_size;
-        printf("[Server] received %ld Byte(s) from %d. The cumulative received: %ld\n", recv_size, from, recv_size_accu);
-        
         /* 加发送锁 */
         pthread_mutex_lock(&send_mutex);
         for(int i = 0; i < USER_SIZE; i++) {
@@ -110,14 +117,20 @@ void *handle_chat(void *data) {
                 if(temp_finish == true) {
                     /* 若上一次发送已经结束, 则在此发送新"Message:"提示 */
                     temp_finish = false;
-                    send(accept_fds[i], prompt, strlen(prompt), 0);
+                    send(accept_fds[i], prompt, strlen(prompt), MSG_NOSIGNAL);
                 }
                 if((p = strchr(message, '\n')) != NULL) {
                     /* 说明整个message中还存在换行, 在pos处 */
                     size_t message_len = (size_t)(p-message);
-                    size_t send_len = send(accept_fds[i], message, (size_t)(p-message), 0);
-                    printf("\t%ld Byte(s) / %ld Byte(s) transmitted.\n", message_len, send_len);
-                    send(accept_fds[i], "\n", 1, 0);
+                    size_t send_len;
+                    /* 循环发送直到成功或客户端断开连接 */
+                    while((send_len = send(accept_fds[i], message, (size_t)(p-message), MSG_NOSIGNAL)) == -1) {
+                        if(check_accept_fd(i) == -1) break;
+                    }
+                    while(send(accept_fds[i], "\n", 1, MSG_NOSIGNAL) == -1) {
+                        if(check_accept_fd(i) == -1) break;
+                    }
+                    printf("\t%ld Byte(s) / %ld Byte(s) transmitted.\n", send_len, message_len);
                     message = p + 1;
                     temp_finish = true;
                     if(message >= buffer + recv_size)  break;
@@ -125,8 +138,12 @@ void *handle_chat(void *data) {
                 else {
                     /* 整条message中不存在换行符, 直接发送, 并break */
                     size_t message_len = strlen(message);
-                    size_t send_len = send(accept_fds[i], message, strlen(message), 0);
-                    printf("\t%ld Byte(s) / %ld Byte(s) transmitted.\n", message_len, send_len);
+                    size_t send_len;
+                    /* 循环发送直到成功或客户端断开连接 */
+                    while((send_len = send(accept_fds[i], message, strlen(message), MSG_NOSIGNAL)) == -1) {
+                        if(check_accept_fd(i) == -1) break;
+                    }
+                    printf("\t%ld Byte(s) / %ld Byte(s) transmitted.\n", send_len, message_len);
                     temp_finish = false;
                     break;
                 }
@@ -156,3 +173,30 @@ int* fdalloc(int* fds) {
     }
     return NULL;
 }
+
+int get_index(int* fds, int key) {
+    for(int i = 0; i < USER_SIZE; i++) {
+        if(accept_fds[i] == key) return i;
+    }
+    return -1;
+}
+
+int check_accept_fd(int index) {
+    if(accept_fds[index]== 0) return 0;
+    char temp[32]; 
+    ssize_t recv_size = 0;
+    extern int errno;
+    recv_size = recv(accept_fds[index], temp, sizeof(temp), MSG_PEEK | MSG_DONTWAIT);
+    if(errno == EPIPE || errno == ECONNRESET) {
+        return -1;
+    }
+    return accept_fds[index];
+}
+
+void print_fds() {
+    for(int i = 0; i < USER_SIZE; i++) {
+        printf("%d ", accept_fds[i]);
+    }
+    printf("\n");
+}
+
