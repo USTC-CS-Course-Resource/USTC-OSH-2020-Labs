@@ -183,7 +183,7 @@ int check_accept_fd(int index) {
     ssize_t recv_size = 0;
     extern int errno;
     recv_size = recv(accept_fds[index], temp, sizeof(temp), MSG_PEEK | MSG_DONTWAIT);
-    printf("错误代码是: %d的recv_size=%d, errno=%d\n", accept_fds[index], recv_size, errno);
+    //printf("错误代码是: %d的recv_size=%d, errno=%d\n", accept_fds[index], recv_size, errno);
     if(((errno == EPIPE || errno == ECONNRESET || errno == EBADF) && recv_size < 0) || recv_size == 0) {
         return -1;
     }
