@@ -64,19 +64,24 @@ int main(int argc, char **argv) {
         return 1;
     }
     
+    for(int i = 0; i < USER_SIZE; i++) {
+        accept_fds[i] = -1;
+    }
+    
     while(1) {
         /* 阻塞等待accept */
         int new_accept = accept(fd, NULL, NULL);
         char prompt[50];
         sprintf(prompt, "[Server] Connecting...\n");
         send(new_accept, prompt, strlen(prompt), 0);
+        int* accept_fd;
+        while((accept_fd = fdalloc(accept_fds)) == NULL);
         /* 加accept锁 */
         pthread_mutex_lock(&accept_mutex);
         /* 等待accept条件变量 */
         while(user_num >= USER_SIZE) {
             pthread_cond_wait(&accept_cond, &accept_mutex);
         }
-        int* accept_fd = fdalloc(accept_fds);
         *accept_fd = new_accept;
         if(*accept_fd == -1) {
             perror("accept");
@@ -109,7 +114,7 @@ void *handle_chat(void *data) {
         /* 加发送锁 */
         pthread_mutex_lock(&send_mutex);
         for(int i = 0; i < USER_SIZE; i++) {
-            if(accept_fds[i] == 0 || accept_fds[i] == from) continue;
+            if(accept_fds[i] == -1 || accept_fds[i] == from) continue;
             temp_finish = finish;
             char* message = buffer;
             char* p = NULL;
@@ -147,7 +152,7 @@ void *handle_chat(void *data) {
         pthread_mutex_unlock(&send_mutex);
     }
     pthread_mutex_lock(&accept_mutex);
-    *pfrom = 0;
+    *pfrom = -1;
     user_num--;
     close(from);
     free(buffer);
@@ -178,7 +183,7 @@ int send_till_ok(int fd_index, char* begin, char* end) {
 }
 
 int check_accept_fd(int index) {
-    if(accept_fds[index]== 0) return 0;
+    if(accept_fds[index]== -1) return 0;
     char temp[32]; 
     ssize_t recv_size = 0;
     extern int errno;
@@ -192,7 +197,7 @@ int check_accept_fd(int index) {
 
 int* fdalloc(int* fds) {
     for(int i = 0; i < USER_SIZE; i++) {
-        if(fds[i] == 0) {
+        if(fds[i] == -1) {
             return fds + i;
         }
     }
