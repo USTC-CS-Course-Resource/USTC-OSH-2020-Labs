@@ -156,7 +156,7 @@ public:
         printf("<<<<<<<<<<<<<<<<<<<<A user(fd: %2d) has connnected! The current user_num: %2ld.\n", new_fd, client_set.size());
 
         // 向客户端发送连接的信息
-        new_client_ptr->reader.feed("Connecting...\n", -2);
+        new_client_ptr->reader.feed("[Server] Connecting...\n", -2);
         char prompt[PROMPT_SIZE];
         sprintf(prompt, "[Server] Connect successfully! Your fd is: %2d\n", new_fd);
         new_client_ptr->reader.feed(string(prompt), -2);
