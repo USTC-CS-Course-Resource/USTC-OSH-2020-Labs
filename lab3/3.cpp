@@ -16,7 +16,8 @@
 
 using namespace std;
 
-#define USER_SIZE 2
+#define USER_SIZE 32
+#define PROMPT_SIZE 50
 
 int accept_fds[USER_SIZE] = {0};
 struct timeval timeout = {0, 0};
@@ -39,14 +40,17 @@ public:
     MessageReader() {
         msgs.clear();
     }
-
+    
     void feed(string data, int from) {
         buffer += data;
         // 按照'\n'分割字符串
         while(true) {
             size_t pos = buffer.find('\n');
             if(pos == string::npos) break;
-            msgs.push_back(Message(buffer.substr(0UL, pos + 1), from));
+            char prompt[PROMPT_SIZE];
+            if(from != -2) sprintf(prompt, "[Message from %2d] ", from);
+            else memset(prompt, 0, PROMPT_SIZE*sizeof(char));
+            msgs.push_back(Message(string(prompt) + buffer.substr(0UL, pos + 1), from));
             if(pos + 1 == buffer.length()) buffer = string();
             else buffer = buffer.substr(pos + 1);
         }
@@ -62,7 +66,7 @@ public:
 
 class Client {
 private:
-    char prompt[32];
+    char prompt[PROMPT_SIZE];
 public:
     int fd;
     MessageReader reader;
@@ -89,10 +93,6 @@ public:
             send_queue = msg.buffer;
         }
         if(send_queue.length() == 0) return; // 没有可发送消息, 返回
-        else {
-            sprintf(prompt, "[Message from %2d] ", msg.from);
-            send(fd, prompt, strlen(prompt), MSG_NOSIGNAL);
-        }
         ssize_t sent_size = send(fd, send_queue.c_str(), send_queue.length(), MSG_NOSIGNAL);
         if(sent_size == -1) return;
         send_queue = send_queue.substr(sent_size);
@@ -156,11 +156,10 @@ public:
         printf("<<<<<<<<<<<<<<<<<<<<A user(fd: %2d) has connnected! The current user_num: %2ld.\n", new_fd, client_set.size());
 
         // 向客户端发送连接的信息
-        char prompt[50];
-        sprintf(prompt, "[Server] Connecting...\n");
-        send(new_fd, prompt, strlen(prompt), MSG_NOSIGNAL);
+        new_client_ptr->reader.feed("Connecting...\n", -2);
+        char prompt[PROMPT_SIZE];
         sprintf(prompt, "[Server] Connect successfully! Your fd is: %2d\n", new_fd);
-        send(new_fd, prompt, strlen(prompt), MSG_NOSIGNAL);
+        new_client_ptr->reader.feed(string(prompt), -2);
     }
 
     int update_client_set() {
