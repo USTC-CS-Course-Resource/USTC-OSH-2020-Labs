@@ -74,9 +74,11 @@ public:
 
     string recv_some(fd_set* recv_clients) {
         if(!FD_ISSET(fd, recv_clients)) return string();
-        char* buffer = (char*)calloc(BUF_SIZE + 1, sizeof(char));
+        char* buffer = new char[BUF_SIZE+1];
         recv(fd, buffer, BUF_SIZE, 0);
-        return string(buffer);
+        string string_buffer = string(buffer);
+        delete [] buffer;
+        return string_buffer;
     }
 
     void send_some(fd_set* send_clients) {
