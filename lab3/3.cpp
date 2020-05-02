@@ -16,7 +16,7 @@
 
 using namespace std;
 
-#define USER_SIZE 32
+#define USER_SIZE 2
 
 int accept_fds[USER_SIZE] = {0};
 struct timeval timeout = {0, 0};
@@ -138,6 +138,10 @@ public:
         clients_fd_set = new fd_set;
         max_fd = 0;
     };
+
+    ~Server() {
+        delete clients_fd_set;
+    }
 
     int accept_one() {
         if(client_set.size() == USER_SIZE) return -1; // 若满, 则不可接受
