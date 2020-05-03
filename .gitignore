@@ -16,5 +16,7 @@ lab3/**
 !lab3/3.cpp
 !lab3/Makefile
 !lab3/README.md
-
-
+!lab3/test_tool
+!lab3/test_tool/checker.py
+!lab3/test_tool/data.txt
+!lab3/test_tool/runclt.sh
