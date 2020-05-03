@@ -124,7 +124,8 @@ void Client::recv_thread_fn() {
     ssize_t recv_size;
 
     while(true) {
-        char buffer[2*BUF_SIZE];
+        char buffer[BUF_SIZE + 1];
+        memset(buffer, 0, sizeof(char) * (BUF_SIZE + 1));
         int i = 0;
         recv_size = recv(fd, buffer, BUF_SIZE, 0);
         buffer[recv_size] = '\0';
