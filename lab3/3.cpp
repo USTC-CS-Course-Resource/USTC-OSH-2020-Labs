@@ -22,22 +22,22 @@ using namespace std;
 int accept_fds[USER_SIZE] = {0};
 struct timeval timeout = {0, 0};
 int finishes[USER_SIZE];
-int BUF_SIZE = 16384;
+int BUF_SIZE = 1024; // BUF_SIZE若过大, recv时, 接收到buf会超出给定大小, 原因未知
 
 class Message {
 public:
     string buffer;
     int from;
-    Message() : buffer(string()), from(-1) {};
+    Message() : buffer(string("")), from(-1) {};
     Message(string buffer, int from) : buffer(buffer), from(from) {};
 };
 
-class MessageReader {
+class MessageManager {
 public:
     string buffer;
     vector<Message> msgs;
 
-    MessageReader() {
+    MessageManager() {
         msgs.clear();
     }
     
@@ -50,12 +50,14 @@ private:
     char prompt[PROMPT_SIZE];
 public:
     int fd;
-    MessageReader reader;
+    MessageManager tosend;
+    MessageManager reader;
     string send_queue;
 
     Client(int fd) : fd(fd) {};
-    string recv_some(fd_set* recv_clients);
+    string recv_one(fd_set* recv_clients);
     void send_some(fd_set* send_clients);
+    bool alive();
 };
 
 class Server {
@@ -95,7 +97,8 @@ int main(int argc, char **argv) {
     return 0;
 }
 
-void MessageReader::feed(string data, int from) {
+void MessageManager::feed(string data, int from) {
+    if(data.size() == 0) return;
     buffer += data;
     // 按照'\n'分割字符串
     while(true) {
@@ -104,39 +107,57 @@ void MessageReader::feed(string data, int from) {
         char prompt[PROMPT_SIZE];
         if(from != -2) sprintf(prompt, "[Message from %2d] ", from);
         else memset(prompt, 0, PROMPT_SIZE*sizeof(char));
-        msgs.push_back(Message(string(prompt) + buffer.substr(0UL, pos + 1), from));
-        if(pos + 1 == buffer.length()) buffer = string();
-        else buffer = buffer.substr(pos + 1);
+        msgs.push_back(Message(string(prompt) + buffer.substr(0UL, pos) + "\n", from));
+        if(pos + 1 == buffer.length()) buffer.erase(buffer.begin(), buffer.end());
+        else buffer = buffer.substr(pos + 1, buffer.length());
     }
 }
 
-Message MessageReader::get_one_msg() {
+Message MessageManager::get_one_msg() {
     if(msgs.size() <= 0) return Message();
     Message msg = msgs[0];
     msgs.erase(msgs.begin());
     return msg;
 }
 
-string Client::recv_some(fd_set* recv_clients) {
-    if(!FD_ISSET(fd, recv_clients)) return string();
+string Client::recv_one(fd_set* recv_clients) {
+    if(!FD_ISSET(fd, recv_clients)) return string("");
     char* buffer = new char[BUF_SIZE+1];
-    recv(fd, buffer, BUF_SIZE, 0);
-    string string_buffer = string(buffer);
+    ssize_t total = 0;
+    ssize_t recv_size;
+    while((recv_size = recv(fd, buffer, BUF_SIZE, MSG_DONTWAIT)) >= 0) {
+        total += recv_size;
+        //if(strlen(buffer) != 0) cout << "接收到" << recv_size << ", 预计feed" << strlen(buffer) << ", buffer末位" << int(buffer[BUF_SIZE]) << '\n';
+        reader.feed(string(buffer), -2);
+        if(reader.msgs.size() > 0 || !alive()) break;
+        memset(buffer, 0, sizeof(char)*BUF_SIZE);
+    }
     delete [] buffer;
-    return string_buffer;
+    return recv_size >= 0 ? reader.get_one_msg().buffer : string("");
 }
 
 void Client::send_some(fd_set* send_clients) {
     if(!FD_ISSET(fd, send_clients)) return; // 不能发送, 返回
     Message msg;
     if(send_queue.length() == 0) {
-        msg = reader.get_one_msg();
+        msg = tosend.get_one_msg();
         send_queue = msg.buffer;
     }
     if(send_queue.length() == 0) return; // 没有可发送消息, 返回
-    ssize_t sent_size = send(fd, send_queue.c_str(), send_queue.length(), MSG_NOSIGNAL);
+    ssize_t sent_size = send(fd, send_queue.c_str(), send_queue.length() > BUF_SIZE ? BUF_SIZE : send_queue.length(), MSG_NOSIGNAL);
     if(sent_size == -1) return;
     send_queue = send_queue.substr(sent_size);
+}
+
+bool Client::alive() {
+    if(fd < 0) return 0;
+    char temp[32]; 
+    ssize_t recv_size = 0;
+    recv_size = recv(fd, temp, sizeof(temp), MSG_PEEK | MSG_DONTWAIT);
+    if(errno == EPIPE || errno == ECONNRESET || errno == EAGAIN) {
+        return false;
+    }
+    return true;
 }
 
 Server::Server(int port) {
@@ -147,12 +168,6 @@ Server::Server(int port) {
 
     int on = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int));
-    int opt_val = 0;
-    socklen_t opt_len = sizeof(opt_len);
-    getsockopt(fd, SOL_SOCKET, SO_SNDBUF, (char*)&opt_val, &opt_len);
-    BUF_SIZE = opt_val;
-    getsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char*)&opt_val, &opt_len);
-    BUF_SIZE = opt_val > BUF_SIZE ? BUF_SIZE : opt_val;
 
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK); // 设置服务器fd为非阻塞
     struct sockaddr_in addr;
@@ -185,10 +200,10 @@ int Server::accept_one() {
     printf("<<<<<<<<<<<<<<<<<<<<A user(fd: %2d) has connnected! The current user_num: %2ld.\n", new_fd, client_set.size());
 
     // 向客户端发送连接的信息
-    new_client_ptr->reader.feed("[Server] Connecting...\n", -2);
+    new_client_ptr->tosend.feed("[Server] Connecting...\n", -2);
     char prompt[PROMPT_SIZE];
     sprintf(prompt, "[Server] Connect successfully! Your fd is: %2d\n", new_fd);
-    new_client_ptr->reader.feed(string(prompt), -2);
+    new_client_ptr->tosend.feed(string(prompt), -2);
 }
 
 void Server::update_client_set() {
@@ -234,11 +249,12 @@ int Server::recv_all_once() {
     update_fd_set();
     if(select(get_max_fd() + 1, clients_fd_set, NULL, NULL, &timeout) <= 0) return -1; // 没有可读, 返回
     for(auto &&clt : client_set) {
-        string recv_buf = clt->recv_some(clients_fd_set);
+        string recv_buf = clt->recv_one(clients_fd_set);
+        if(recv_buf.length() > 0) cout << "拿到了" << recv_buf.length() << endl;
         // 更新所有其他客户端的发送队列
         for(auto &&clt_tofeed : client_set) {
             if(clt_tofeed == clt) continue;
-            clt_tofeed->reader.feed(recv_buf, clt->fd);
+            clt_tofeed->tosend.feed(recv_buf, clt->fd);
         }
     }
 }
