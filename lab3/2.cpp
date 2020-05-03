@@ -126,11 +126,10 @@ void Client::recv_thread_fn() {
     while(true) {
         char buffer[2*BUF_SIZE];
         int i = 0;
-        while((recv_size = recv(fd, buffer, BUF_SIZE, 0)) > 0) {
-            buffer[recv_size] = '\0';
-            reader.feed(string(buffer), -2);
-            if(reader.msgs.size() > 0 || !alive()) break;
-        }
+        recv_size = recv(fd, buffer, BUF_SIZE, 0);
+        buffer[recv_size] = '\0';
+        // 对reader的任何修改只有本客户端的recv线程会做, 不存在并行, 不必上锁
+        reader.feed(string(buffer), -2);
 
         for(auto &&clt : server_ptr->client_set) {
             if(clt == this) continue;
