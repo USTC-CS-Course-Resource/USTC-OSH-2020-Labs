@@ -22,7 +22,7 @@ using namespace std;
 int accept_fds[USER_SIZE] = {0};
 struct timeval timeout = {0, 0};
 int finishes[USER_SIZE];
-int BUF_SIZE = 1024; // BUF_SIZE若过大, recv时, 接收到buf会超出给定大小, 原因未知
+int BUF_SIZE = 1024;
 
 class Message {
 public:
@@ -55,7 +55,7 @@ public:
     string send_queue;
 
     Client(int fd) : fd(fd) {};
-    string recv_one(fd_set* recv_clients);
+    void recv_once(fd_set* recv_clients);
     void send_some(fd_set* send_clients);
     bool alive();
 };
@@ -109,7 +109,7 @@ void MessageManager::feed(string data, int from) {
         else memset(prompt, 0, PROMPT_SIZE*sizeof(char));
         msgs.push_back(Message(string(prompt) + buffer.substr(0UL, pos) + "\n", from));
         if(pos + 1 == buffer.length()) buffer.erase(buffer.begin(), buffer.end());
-        else buffer = buffer.substr(pos + 1, buffer.length());
+        else buffer = buffer.substr(pos + 1);
     }
 }
 
@@ -120,20 +120,15 @@ Message MessageManager::get_one_msg() {
     return msg;
 }
 
-string Client::recv_one(fd_set* recv_clients) {
-    if(!FD_ISSET(fd, recv_clients)) return string("");
-    char* buffer = new char[BUF_SIZE+1];
-    ssize_t total = 0;
+void Client::recv_once(fd_set* recv_clients) {
+    if(!FD_ISSET(fd, recv_clients)) return;
+    char buffer[BUF_SIZE + 1];
+    memset(buffer, 0, sizeof(char)*(BUF_SIZE + 1));
     ssize_t recv_size;
-    while((recv_size = recv(fd, buffer, BUF_SIZE, MSG_DONTWAIT)) >= 0) {
-        total += recv_size;
-        //if(strlen(buffer) != 0) cout << "接收到" << recv_size << ", 预计feed" << strlen(buffer) << ", buffer末位" << int(buffer[BUF_SIZE]) << '\n';
-        reader.feed(string(buffer), -2);
-        if(reader.msgs.size() > 0 || !alive()) break;
-        memset(buffer, 0, sizeof(char)*BUF_SIZE);
-    }
-    delete [] buffer;
-    return recv_size >= 0 ? reader.get_one_msg().buffer : string("");
+    recv_size = recv(fd, buffer, BUF_SIZE, MSG_DONTWAIT);
+    if(recv_size <= 0) return;
+    reader.feed(string(buffer), -2);
+    return;
 }
 
 void Client::send_some(fd_set* send_clients) {
@@ -145,7 +140,7 @@ void Client::send_some(fd_set* send_clients) {
     }
     if(send_queue.length() == 0) return; // 没有可发送消息, 返回
     ssize_t sent_size = send(fd, send_queue.c_str(), send_queue.length() > BUF_SIZE ? BUF_SIZE : send_queue.length(), MSG_NOSIGNAL);
-    if(sent_size == -1) return;
+    if(sent_size < 0) return;
     send_queue = send_queue.substr(sent_size);
 }
 
@@ -217,7 +212,6 @@ int Server::update_client(Client &clt) {
     char temp[32]; 
     ssize_t recv_size = 0;
     recv_size = recv(clt.fd, temp, sizeof(temp), MSG_PEEK | MSG_DONTWAIT);
-    //printf("[%d] recv_size=%d, errno=%d\n", accept_fds[index], recv_size, errno);
     if(((errno == EPIPE || errno == ECONNRESET || errno == EBADF) && recv_size < 0) || recv_size == 0) {
         int fd = clt.fd;
         close(clt.fd);
@@ -249,12 +243,18 @@ int Server::recv_all_once() {
     update_fd_set();
     if(select(get_max_fd() + 1, clients_fd_set, NULL, NULL, &timeout) <= 0) return -1; // 没有可读, 返回
     for(auto &&clt : client_set) {
-        string recv_buf = clt->recv_one(clients_fd_set);
-        if(recv_buf.length() > 0) cout << "拿到了" << recv_buf.length() << endl;
+        clt->recv_once(clients_fd_set);
         // 更新所有其他客户端的发送队列
-        for(auto &&clt_tofeed : client_set) {
-            if(clt_tofeed == clt) continue;
-            clt_tofeed->tosend.feed(recv_buf, clt->fd);
+        for(auto &&other_clt : server_ptr->client_set) {
+            if(other_clt == clt) continue;
+            for(auto msg : clt->reader.msgs) {
+                char prompt[PROMPT_SIZE];
+                sprintf(prompt, "[Message from %2d] ", clt->fd);
+                other_clt->tosend.msgs.push_back(Message(string(prompt) + msg.buffer, clt->fd));
+            }
+        }
+        for(auto it = clt->reader.msgs.begin(); it != clt->reader.msgs.end();) {
+            it = clt->reader.msgs.erase(it);
         }
     }
 }
