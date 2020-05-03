@@ -29,7 +29,3 @@ run2:
 .PHONY: run3
 run3:
 	./3 6666
-
-.PHONY: gen
-gen:
-	gcc data_generator.c -o data_generator && ./data_generator
