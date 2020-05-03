@@ -175,7 +175,6 @@ void Client::send_thread_fn() {
         if(sent_size == -1) continue;
         if(sent_size == send_queue.length()) send_queue = string();
         else send_queue = send_queue.substr(sent_size);
-
     }
 }
 
@@ -192,7 +191,6 @@ bool Client::alive() {
     recv_size = recv(fd, temp, sizeof(temp), MSG_PEEK | MSG_DONTWAIT);
     
     if(errno == EPIPE || errno == ECONNRESET || recv_size == 0) {
-        //cout << "errno: " << errno << endl;
         return false;
     }
     return true;
