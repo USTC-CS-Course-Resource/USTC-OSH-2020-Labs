@@ -19,7 +19,6 @@ using namespace std;
 #define USER_SIZE 32
 #define PROMPT_SIZE 32
 #define BUF_SIZE 1024
-#define A
 
 int accept_fds[USER_SIZE] = {0};
 struct timeval timeout = {0, 0};
@@ -129,11 +128,6 @@ void Client::recv_thread_fn() {
         int i = 0;
         while((recv_size = recv(fd, buffer, BUF_SIZE, 0)) > 0) {
             buffer[recv_size] = '\0';
-            if(strlen(buffer) > 1024) {
-                FILE* f = fopen("what.txt", "w");
-                fprintf(f, "%s", buffer);
-                fclose(f);
-            }
             reader.feed(string(buffer), -2);
             if(reader.msgs.size() > 0 || !alive()) break;
         }
