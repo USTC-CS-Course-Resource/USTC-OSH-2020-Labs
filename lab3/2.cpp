@@ -242,7 +242,6 @@ int Server::start() {
         clt->run();
         accept_lock.unlock();
     }
-    update_thread.join();
 }
 
 void Server::update_client_set() {

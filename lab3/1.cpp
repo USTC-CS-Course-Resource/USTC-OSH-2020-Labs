@@ -237,7 +237,6 @@ int Server::start() {
         // 已经准备好, 启动客户端线程
         clt->run();
     }
-    update_thread.join();
 }
 
 void Server::update_client_set() {
