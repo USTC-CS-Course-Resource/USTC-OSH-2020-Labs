@@ -11,7 +11,7 @@ lab2/**
 !lab2/README.md
 !lab2/test
 lab3/**
-!lab3/1.c
+!lab3/1.cpp
 !lab3/2.cpp
 !lab3/3.cpp
 !lab3/Makefile

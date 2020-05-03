@@ -16,7 +16,7 @@
 
 using namespace std;
 
-#define USER_SIZE 32
+#define USER_SIZE 2
 #define PROMPT_SIZE 32
 #define BUF_SIZE 1024
 
@@ -213,19 +213,15 @@ Server::Server(int port) {
 
 int Server::start() {
     thread update_thread = thread(&Server::update_client_set, ref(*this));
-    while(1) {
-        /* 阻塞等待accept */
+
+    for(int i = 0; i < 2; i++) {
         int new_fd = accept(fd, NULL, NULL);
         int on = 1;
         setsockopt(new_fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int));
         char prompt[50];
         sprintf(prompt, "[Server] Connecting...\n");
         send(new_fd, prompt, strlen(prompt), 0);
-        /* 加accept锁 */
-        unique_lock<mutex> accept_lock(accept_mutex);
-
-        /* 等待accept条件变量 */
-        accept_cv.wait(accept_lock, [&]{ return client_set.size() < USER_SIZE; });
+        
         if(new_fd == -1) {
             perror("accept");
             return 1;
@@ -240,7 +236,6 @@ int Server::start() {
 
         // 已经准备好, 启动客户端线程
         clt->run();
-        accept_lock.unlock();
     }
     update_thread.join();
 }
@@ -268,6 +263,7 @@ void Server::update_client_set() {
 
 int main(int argc, char **argv) {
     Server* server_ptr = new Server(atoi(argv[1]));
+    
     server_ptr->start();
     return 0;
 }
