@@ -34,9 +34,13 @@ lab2
 
 ```bash
 lab3
-├── 1.c
-├── 2.c
-├── 3.c
+├── test_tool
+│   ├── checker.py  
+│   ├── data.txt  
+│   ├── runclt.sh
+├── 1.cpp
+├── 2.cpp
+├── 3.cpp
 ├── Makefile
 ├── README.md
 ```
