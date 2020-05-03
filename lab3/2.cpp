@@ -20,9 +20,7 @@ using namespace std;
 #define PROMPT_SIZE 32
 #define BUF_SIZE 1024
 
-int accept_fds[USER_SIZE] = {0};
 struct timeval timeout = {0, 0};
-int finishes[USER_SIZE];
 
 class Client;
 class Server;
@@ -77,7 +75,6 @@ class Server {
 public:
     set<Client*> client_set;
     int port;
-    int max_fd;
     int fd;
     mutex accept_mutex;
     condition_variable accept_cv;

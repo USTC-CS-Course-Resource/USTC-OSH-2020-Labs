@@ -19,9 +19,7 @@ using namespace std;
 #define USER_SIZE 32
 #define PROMPT_SIZE 50
 
-int accept_fds[USER_SIZE] = {0};
 struct timeval timeout = {0, 0};
-int finishes[USER_SIZE];
 int BUF_SIZE = 1024;
 
 class Message {
@@ -65,7 +63,6 @@ public:
     set<Client*> client_set;
     fd_set* clients_fd_set;
     int port;
-    int max_fd;
     int fd;
 
     Server(int port);
@@ -98,7 +95,7 @@ int main(int argc, char **argv) {
 }
 
 void MessageManager::feed(string data, int from) {
-    if(data.size() == 0) return;
+    if(data.empty()) return;
     buffer += data;
     // 按照'\n'分割字符串
     while(true) {
@@ -133,12 +130,11 @@ void Client::recv_once(fd_set* recv_clients) {
 
 void Client::send_some(fd_set* send_clients) {
     if(!FD_ISSET(fd, send_clients)) return; // 不能发送, 返回
-    Message msg;
-    if(send_queue.length() == 0) {
-        msg = tosend.get_one_msg();
+    if(send_queue.empty()) {
+        Message msg = tosend.get_one_msg();
         send_queue = msg.buffer;
     }
-    if(send_queue.length() == 0) return; // 没有可发送消息, 返回
+    if(send_queue.empty()) return; // 没有可发送消息, 返回
     ssize_t sent_size = send(fd, send_queue.c_str(), send_queue.length() > BUF_SIZE ? BUF_SIZE : send_queue.length(), MSG_NOSIGNAL);
     if(sent_size < 0) return;
     send_queue = send_queue.substr(sent_size);
@@ -180,7 +176,6 @@ Server::Server(int port) {
     }
 
     clients_fd_set = new fd_set;
-    max_fd = 0;
 };
 
 
