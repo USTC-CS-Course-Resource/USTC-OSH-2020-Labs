@@ -20,3 +20,6 @@ lab3/**
 !lab3/test_tool/checker.py
 !lab3/test_tool/data.txt
 !lab3/test_tool/runclt.sh
+lab4/**
+!lab4/main.c
+!lab4/Makefile
