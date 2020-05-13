@@ -54,6 +54,20 @@ root@rootfs:/# cat /proc/self/mountinfo
 
 [systemd-nspawn的一些介绍](https://linux.cn/article-4678-1.html)
 
+## 设置了CLONE_NEWNS, 退出后mount查看还在？
+
+在宿主机用以下命令查看`/home`挂载是否为`shared`的.
+```bash
+cat /proc/self/mountinfo | grep "/ /home"
+```
+
+若是, 执行以下命令以挂载为`private`
+```bash
+mount --make-rprivate -o remount /home
+```
+
+[参考](https://bugzilla.redhat.com/show_bug.cgi?id=830427)
+
 ## `pivot_root`与`syscall`的使用
 
 [syscall文档](http://man7.org/linux/man-pages/man2/syscall.2.html)
@@ -97,4 +111,3 @@ main(int argc, char *argv[])
     syscall(SYS_tgkill, getpid(), tid, SIGHUP);
 }
 ```
-
