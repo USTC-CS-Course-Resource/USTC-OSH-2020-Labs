@@ -54,9 +54,10 @@ root@rootfs:/# cat /proc/self/mountinfo
 
 [systemd-nspawn的一些介绍](https://linux.cn/article-4678-1.html)
 
-## `syscall`的使用
+## `pivot_root`与`syscall`的使用
 
 [syscall文档](http://man7.org/linux/man-pages/man2/syscall.2.html)
+[pivot_root文档(其使用见示例代码)](http://man7.org/linux/man-pages/man2/pivot_root.2.html)
 
 ### 函数介绍
 
