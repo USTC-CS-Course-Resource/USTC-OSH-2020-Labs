@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
     void *child_stack_start = child_stack + STACK_SIZE;
 
     int container_pid = clone(child, child_stack_start,
-                   SIGCHLD | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID | CLONE_NEWCGROUP,
+                   SIGCHLD/* | CLONE_NEWNS*/ | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID | CLONE_NEWCGROUP,
                    argv);
     
     int status, ecode = 0;
@@ -62,36 +62,19 @@ sudo mount --make-private -o remount /
 
 */
 int child(void *arg) {
-    mount("/dev/sdb8", "/home", "ext4", MS_PRIVATE | MS_RELATIME, NULL);
-    sethostname("container",20);
     char** argv = (char**)(arg);
     // Child goes for target program
-    //if (chroot(".") == -1)
-    //    error_exit(1, "chroot");
-
-    //system("mount -t proc proc /proc");
-    //mount("/", "/", "ext4", MS_PRIVATE, "");
+    if (chroot(".") == -1)
+        error_exit(1, "chroot");
+        
+    mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
     mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
-    //mount("none", "/tmp", "tmpfs", 0, "");
-    // mount file system
-    /*
-    udev on /dev type devtmpfs (rw,nosuid,relatime,size=8115188k,nr_inodes=2028797,mode=755)
-    proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)
-    sysfs on /sys type sysfs (rw,nosuid,nodev,noexec,relatime)
-    /tmp
-
-    Values  for  the  filesystemtype  argument  supported by the kernel are
-       listed in  /proc/filesystems  (e.g.,  "btrfs",  "ext4",  "jfs",  "xfs",
-       "vfat",  "fuse",  "tmpfs",  "cgroup",  "proc", "mqueue", "nfs", "cifs",
-       "iso9660").  Further types may become available  when  the  appropriate
-       modules are loaded.*/
+    mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
+    mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
+    
     // TODO: 在 /sys/fs/cgroup 下挂载指定的四类 cgroup 控制器
 
-    /*mount("udev", "/dev", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "size=8115188k nr_inodes=2028797 mode=755");
-    */
-    /*mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
-    mount("tmp", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "size=8115188k nr_inodes=2028797 mode=755");
-    */
+    
     /*
     char tmpdir[] = "/tmp/lab4-XXXXXX";
     mkdtemp(tmpdir);
