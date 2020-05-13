@@ -8,8 +8,11 @@
 #include <signal.h>     // For SIGCHLD constant
 #include <sys/mman.h>   // For mmap(2)
 #include <sys/mount.h>  // For mount(2)
+#include <sys/syscall.h>    // For syscall(2)
+#include <stdarg.h>
 
 #define STACK_SIZE (1024 * 1024) // 1 MiB
+#define PATH_SIZE_MAX 1024
 
 const char *usage =
 "Usage: %s <directory> <command> [args...]\n"
@@ -17,7 +20,10 @@ const char *usage =
 "  Run <directory> as a container and execute <command>.\n";
 
 void error_exit(int code, const char *message);
-int child(void *arg);
+static int child(void *arg);
+// implement the pivot_root by syscall
+static int pivot_root(const char *new_root, const char *put_old);
+void errexit(const char *format, ...);
 
 int main(int argc, char **argv) {
     if (argc < 3) {
@@ -61,27 +67,64 @@ mount | grep OSH && sudo umount rootfs/proc
 sudo mount --make-private -o remount /
 
 */
-int child(void *arg) {
-    char** argv = (char**)(arg);
-    // Child goes for target program
-    if (chroot(".") == -1)
-        error_exit(1, "chroot");
-        
+static int child(void *arg) {
+    // recv the arg
+    char **args = arg;
+    // get the container_root relative path in old environment
+    char *container_root_path = args[1];
+
+    // create the directory for the old root
+    char tmpdir[] = "/tmp/lab4-XXXXXX";
+    mkdtemp(tmpdir);
+    char oldroot_path[PATH_SIZE_MAX];
+    char put_old[] = "oldrootfs";
+    snprintf(oldroot_path, sizeof(char)*PATH_SIZE_MAX, "%s/%s", tmpdir, put_old);
+
+    // recursively remount / as private
+    if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
+        errexit("[error] mount-MS_PRIVATE\n");
+
+    printf("container_root_path: %s\n", container_root_path);
+    printf("tempdir: %s\n", tmpdir);
+    printf("oldroot_dir: %s\n", oldroot_path);
+    // Ensure that 'new_root' is a mount point
+    if (mount(container_root_path, tmpdir, NULL, MS_BIND, NULL) == -1)
+        errexit("[error] mount-MS_BIND\n");
+
+    // And pivot the root filesystem
+    if (pivot_root(tmpdir, oldroot_path) == -1)
+        errexit("[error] pivot_root\n");
+/*
+    // Switch the current working directory to "/"
+    if (chdir("/") == -1)
+        errexit("[error] chdir");
+
+    // Unmount old root and remove mount point
+    if (umount2(put_old, MNT_DETACH) == -1)
+        perror("[error] umount2");
+    if (rmdir(put_old) == -1)
+        perror("[error] rmdir");
+    */
+    /*
     mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
     mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
     mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
     mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
-    
-    // TODO: 在 /sys/fs/cgroup 下挂载指定的四类 cgroup 控制器
+    */// TODO: 在 /sys/fs/cgroup 下挂载指定的四类 cgroup 控制器
 
-    
-    /*
-    char tmpdir[] = "/tmp/lab4-XXXXXX";
-    mkdtemp(tmpdir);
-    char oldrootdir[] = "";
-    sprintf(oldrootdir, "%s/oldroot", tmpdir);
-    pivot_root(tmpdir, oldrootdir);
-    */
-    execvp(argv[2], argv + 2);
+    execvp(args[2], args + 2);
     error_exit(255, "exec");
 }
+
+static int pivot_root(const char *new_root, const char *put_old)
+{
+    return syscall(SYS_pivot_root, new_root, put_old);
+}
+
+void errexit(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    exit(1);
+} 
