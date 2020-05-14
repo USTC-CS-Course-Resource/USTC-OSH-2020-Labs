@@ -66,6 +66,12 @@ cat /proc/self/mountinfo | grep "/ /home"
 mount --make-rprivate -o remount /home
 ```
 
+或者使用如下代码
+```c
+if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
+    errexit("[error] mount-MS_PRIVATE\n");
+```
+
 [参考](https://bugzilla.redhat.com/show_bug.cgi?id=830427)
 
 ## `pivot_root`与`syscall`的使用

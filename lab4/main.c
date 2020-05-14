@@ -10,6 +10,10 @@
 #include <sys/mount.h>  // For mount(2)
 #include <sys/syscall.h>    // For syscall(2)
 #include <stdarg.h>
+#include <errno.h>
+#include <string.h>       
+#include <sys/stat.h>
+
 
 #define STACK_SIZE (1024 * 1024) // 1 MiB
 #define PATH_SIZE_MAX 1024
@@ -70,30 +74,41 @@ sudo mount --make-private -o remount /
 static int child(void *arg) {
     // recv the arg
     char **args = arg;
-    // get the container_root relative path in old environment
-    char *container_root_path = args[1];
 
     // create the directory for the old root
     char tmpdir[] = "/tmp/lab4-XXXXXX";
     mkdtemp(tmpdir);
     char oldroot_path[PATH_SIZE_MAX];
     char put_old[] = "oldrootfs";
+
+    // expand the oldroot_path
     snprintf(oldroot_path, sizeof(char)*PATH_SIZE_MAX, "%s/%s", tmpdir, put_old);
+    
+    // make dir oldroot_path (may fail because of EEXIST)
+    mkdir(oldroot_path, 0777);
 
     // recursively remount / as private
     if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
-        errexit("[error] mount-MS_PRIVATE\n");
+        errexit("[error] mount-MS_PRIVATE");
 
-    printf("container_root_path: %s\n", container_root_path);
     printf("tempdir: %s\n", tmpdir);
     printf("oldroot_dir: %s\n", oldroot_path);
-    // Ensure that 'new_root' is a mount point
-    if (mount(container_root_path, tmpdir, NULL, MS_BIND, NULL) == -1)
-        errexit("[error] mount-MS_BIND\n");
+    
+    // bind the root of the container to tmpdir
+    if (mount("./", tmpdir, NULL, MS_BIND, NULL) == -1)
+        errexit("[error] mount-MS_BIND");
+
 
     // And pivot the root filesystem
-    if (pivot_root(tmpdir, oldroot_path) == -1)
-        errexit("[error] pivot_root\n");
+    if (pivot_root(tmpdir, oldroot_path) == -1) {
+        errexit("[error] pivot_root");
+    }
+
+    mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
+    mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
+    // TODO: 在 /sys/fs/cgroup 下挂载指定的四类 cgroup 控制器
 /*
     // Switch the current working directory to "/"
     if (chdir("/") == -1)
@@ -105,13 +120,7 @@ static int child(void *arg) {
     if (rmdir(put_old) == -1)
         perror("[error] rmdir");
     */
-    /*
-    mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
-    mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
-    mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
-    mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
-    */// TODO: 在 /sys/fs/cgroup 下挂载指定的四类 cgroup 控制器
-
+    
     execvp(args[2], args + 2);
     error_exit(255, "exec");
 }
@@ -125,6 +134,7 @@ void errexit(const char *format, ...) {
     va_list args;
     va_start(args, format);
     vfprintf(stderr, format, args);
+    fprintf(stderr, "\terrno: %d\n", errno);
     va_end(args);
     exit(1);
 } 
