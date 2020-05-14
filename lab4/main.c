@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
     void *child_stack_start = child_stack + STACK_SIZE;
 
     int container_pid = clone(child, child_stack_start,
-                   SIGCHLD/* | CLONE_NEWNS*/ | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID | CLONE_NEWCGROUP,
+                   SIGCHLD | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID | CLONE_NEWCGROUP,
                    argv);
     
     int status, ecode = 0;
@@ -86,23 +86,24 @@ static int child(void *arg) {
     
     // make dir oldroot_path (may fail because of EEXIST)
     mkdir(oldroot_path, 0777);
+    printf("mkdir errno: %d\n", errno);
+
+    printf("tempdir: %s\n", tmpdir);
+    printf("oldroot_dir: %s\n", oldroot_path);
+    printf("access tmpdir: %d\n", access(tmpdir, F_OK));
+    printf("access oldroot_path: %d\n", access(oldroot_path, F_OK));
 
     // recursively remount / as private
     if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
         errexit("[error] mount-MS_PRIVATE");
-
-    printf("tempdir: %s\n", tmpdir);
-    printf("oldroot_dir: %s\n", oldroot_path);
     
     // bind the root of the container to tmpdir
     if (mount("./", tmpdir, NULL, MS_BIND, NULL) == -1)
         errexit("[error] mount-MS_BIND");
 
-
     // And pivot the root filesystem
-    if (pivot_root(tmpdir, oldroot_path) == -1) {
+    if (pivot_root(tmpdir, oldroot_path) == -1)
         errexit("[error] pivot_root");
-    }
 
     // Switch the current working directory to "/"
     if (chdir("/") == -1)
