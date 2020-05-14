@@ -26,6 +26,7 @@ const char *usage =
 
 void error_exit(int code, const char *message);
 static int child(void *arg);
+void errexit(const char *format, ...);
 // implement the pivot_root by syscall
 static int pivot_root(const char *new_root, const char *put_old);
 /* 
@@ -38,7 +39,8 @@ static int pivot_root(const char *new_root, const char *put_old);
  *  detach and rmdir,
  */ 
 int do_pivot(const char *tmpdir);
-void errexit(const char *format, ...);
+void check_needed_cap();
+void update_needed_cap();
 
 typedef struct ChildArg {
     char **args;
@@ -121,14 +123,9 @@ static int child(void *arg) {
     write(carg.fds[1], tmpdir, strlen(tmpdir)+1);
     close(carg.fds[1]);
 
-    capng_clear(CAPNG_SELECT_BOTH);
-    capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE|CAPNG_PERMITTED,
-                  CAP_SETPCAP, CAP_MKNOD, CAP_AUDIT_WRITE,
-                  CAP_CHOWN, CAP_NET_RAW, CAP_DAC_OVERRIDE,
-                  CAP_FOWNER, CAP_FSETID, CAP_KILL,
-                  CAP_SETGID, CAP_SETUID, CAP_NET_BIND_SERVICE,
-                  CAP_SYS_CHROOT, CAP_SETFCAP, -1);
-    capng_apply(CAPNG_SELECT_BOTH);
+    // update capabilities and check them
+    update_needed_cap();
+    check_needed_cap();
     
     execvp(args[2], args + 2);
     error_exit(255, "exec");
@@ -165,6 +162,41 @@ int do_pivot(const char *tmpdir) {
         errexit("[error] umount2(put_old, MNT_DETACH)");
     if (rmdir(put_old) == -1)
         errexit("[error] rmdir");
+}
+
+#define CAPS_NUM 14
+#define CAPS CAP_SETPCAP, CAP_MKNOD, CAP_AUDIT_WRITE,\
+             CAP_CHOWN, CAP_NET_RAW, CAP_DAC_OVERRIDE,\
+             CAP_FOWNER, CAP_FSETID, CAP_KILL,\
+             CAP_SETGID, CAP_SETUID, CAP_NET_BIND_SERVICE,\
+             CAP_SYS_CHROOT, CAP_SETFCAP
+
+const int CAPS_LIST[14] = {CAP_SETPCAP, CAP_MKNOD, CAP_AUDIT_WRITE,
+                           CAP_CHOWN, CAP_NET_RAW, CAP_DAC_OVERRIDE,
+                           CAP_FOWNER, CAP_FSETID, CAP_KILL,
+                           CAP_SETGID, CAP_SETUID, CAP_NET_BIND_SERVICE,
+                           CAP_SYS_CHROOT, CAP_SETFCAP};
+
+const char CAPS_STR_LIST[14][20] = {"CAP_SETPCAP", "CAP_MKNOD", "CAP_AUDIT_WRITE",
+                                    "CAP_CHOWN", "CAP_NET_RAW", "CAP_DAC_OVERRIDE",
+                                    "CAP_FOWNER", "CAP_FSETID", "CAP_KILL",
+                                    "CAP_SETGID", "CAP_SETUID", "CAP_NET_BIND_SERVICE",
+                                    "CAP_SYS_CHROOT", "CAP_SETFCAP"};
+
+void update_needed_cap() {
+    capng_clear(CAPNG_SELECT_BOTH);
+    capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE|CAPNG_PERMITTED,
+                  CAPS, -1);
+    capng_apply(CAPNG_SELECT_BOTH);
+}
+
+void check_needed_cap() {
+    for(int i = 0; i < CAPS_NUM; i++) {
+        if (capng_have_capability(CAPNG_EFFECTIVE, CAPS_LIST[i]))
+            printf("%s [√]\n", CAPS_STR_LIST[i]);
+        else
+            printf("%s [x]\n", CAPS_STR_LIST[i]);
+    }
 }
 
 static int pivot_root(const char *new_root, const char *put_old)
