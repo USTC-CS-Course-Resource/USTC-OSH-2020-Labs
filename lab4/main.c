@@ -60,18 +60,14 @@ int main(int argc, char **argv) {
     
     int status, ecode = 0;
     close (carg.fds[1]);
-    char bind_path[PATH_SIZE_MAX];
+    char bind_path[PATH_SIZE_MAX] = {'\0'};
     read(carg.fds[0], bind_path, PATH_SIZE_MAX);
-
-    char ls_com[PATH_SIZE_MAX+3] = "ls ";
-    strcat(ls_com, bind_path);
-    printf("命令: %s\n", ls_com);
-    sleep(2);
-    system(ls_com);
+    
     if(umount2(bind_path, MNT_DETACH) == -1)
-        perror("[error] umount2");
+        perror("[warning] umount2");
     if(rmdir(bind_path) == -1)
-        perror("[error] rmdir");
+        perror("[warning] rmdir");
+    system("ls /tmp | grep lab4");
 
     wait(&status);
     if(WIFEXITED(status)) {
@@ -90,11 +86,6 @@ void error_exit(int code, const char *message) {
     _exit(code);
 }
 
-/*
-mount | grep OSH && sudo umount rootfs/proc
-sudo mount --make-private -o remount /
-
-*/
 static int child(void *arg) {
     // recv the arg
     ChildArg carg = *((ChildArg*)arg);
@@ -109,14 +100,6 @@ static int child(void *arg) {
     // expand the oldroot_path
     snprintf(oldroot_path, sizeof(char)*PATH_SIZE_MAX, "%s/%s", tmpdir, put_old);
     
-    // make dir oldroot_path (may fail because of EEXIST)
-    mkdir(oldroot_path, 0777);
-    printf("mkdir errno: %d\n", errno);
-
-    printf("tempdir: %s\n", tmpdir);
-    printf("oldroot_dir: %s\n", oldroot_path);
-    printf("access tmpdir: %d\n", access(tmpdir, F_OK));
-    printf("access oldroot_path: %d\n", access(oldroot_path, F_OK));
 
     // recursively remount / as private
     if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
@@ -126,6 +109,17 @@ static int child(void *arg) {
     if (mount("./", tmpdir, NULL, MS_BIND, NULL) == -1)
         errexit("[error] mount-MS_BIND");
 
+    // make dir oldroot_path (may fail because of EEXIST)
+    mkdir(oldroot_path, 0777);
+    printf("mkdir errno: %d\n", errno);
+
+    char ls_com[PATH_SIZE_MAX+3] = "ls ";
+    strcat(ls_com, tmpdir);
+    system(ls_com);
+
+    printf("access %s: %d\n", tmpdir, access(tmpdir, F_OK));
+    printf("access %s: %d\n", oldroot_path, access(oldroot_path, F_OK));
+
     // And pivot the root filesystem
     if (pivot_root(tmpdir, oldroot_path) == -1)
         errexit("[error] pivot_root");
@@ -133,25 +127,22 @@ static int child(void *arg) {
     // Switch the current working directory to "/"
     if (chdir("/") == -1)
         errexit("[error] chdir");
-    
-    system("ls \tmp");
-    printf("finish ls");
+
     // Unmount old root and remove mount point
     if (umount2(put_old, MNT_DETACH) == -1)
-        perror("[error] umount2");
+        errexit("[error] umount2(put_old, MNT_DETACH)");
     if (rmdir(put_old) == -1)
-        perror("[error] rmdir");
-
-    close(carg.fds[0]);
-    write(carg.fds[1], tmpdir, strlen(tmpdir)+1);
-    close(carg.fds[1]);
-
+        errexit("[error] rmdir");
     
     mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
     mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
     mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
     mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
     // TODO: 在 /sys/fs/cgroup 下挂载指定的四类 cgroup 控制器
+    
+    close(carg.fds[0]);
+    write(carg.fds[1], tmpdir, strlen(tmpdir)+1);
+    close(carg.fds[1]);
     
     execvp(args[2], args + 2);
     error_exit(255, "exec");

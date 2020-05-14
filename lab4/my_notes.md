@@ -131,3 +131,15 @@ int pivot_root(const char *new_root, const char *put_old);
 ### 函数示例
 
 见[pivot_root文档](http://man7.org/linux/man-pages/man2/pivot_root.2.html)末尾
+
+## 步骤`从主机上隐藏容器的根文件系统`中, 主机对应文件夹并无挂载
+
+可能在子进程中递归私有化了宿主机根文件系统的挂载点, 比如
+
+```c
+// recursively remount / as private
+if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
+    errexit("[error] mount-MS_PRIVATE");
+```
+
+这种情况下, 在父进程(主机上)也就自然没有子进程在`/tmp/lab4-tkytql`上挂载的容器根文件系统的挂载信息(因为隔离了挂载信息), 即不会传播到主机. 因此只需要使用`rmdir`删除`/tmp/lab4-tkytql`即可(这一点我问过助教了)
