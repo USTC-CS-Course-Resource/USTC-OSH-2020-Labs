@@ -145,19 +145,4 @@ if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
 
 ## 5. 使用 libseccomp 对容器中的系统调用进行白名单过滤
 
-1. 初始化过滤器
-```c
-scmp_filter_ctx seccomp_init(uint32_t def_action);
-```
-2. 加入规则
-```c
-int seccomp_rule_add(scmp_filter_ctx ctx, uint32_t action, int syscall, unsigned int arg_cnt, ...);
-```
-3. 载入内核
-```c
-int seccomp_load(scmp_filter_ctx ctx);
-```
-4. 释放
-```c
-void seccomp_release(scmp_filter_ctx ctx);
-```
+## 6. 使用 cgroup 限制容器中的 CPU、内存、进程数与 I/O 优先级

@@ -14,6 +14,8 @@
 #include <errno.h>          // For errno
 #include <cap-ng.h>         // For libcap-ng series functions
 #include <seccomp.h>        // For seccomp series functions
+#include <fcntl.h>          // For file control
+
 #include "syscall_filter.h"
 #include "utility.h"
 
@@ -44,14 +46,20 @@ static int child(void *arg);
  */ 
 int do_pivot(const char *tmpdir);
 
-// Part II.     For capabilities
+// Part II.     For mount
+void mount_needed();
+
+// Part III.     For capabilities
 void check_needed_cap();
 void update_needed_cap();
 
-// Part III.    For seccomp
+// Part IV.    For seccomp
 void set_seccomp();
 
-// Part II. some utilities
+// Part V.    For cgroup limit
+void cgroup_limit();
+
+// Part VI. some utilities
 void error_exit(int code, const char *message);
 
 int main(int argc, char **argv) {
@@ -84,12 +92,14 @@ int main(int argc, char **argv) {
     read(carg.fds[0], bind_path, PATH_SIZE_MAX);
     
     umount2(bind_path, MNT_DETACH);
-    if(rmdir(bind_path) == -1) {
+    if(rmdir(bind_path) == -1)
         perror("rmdir");
-    }
+        
     
-
     wait(&status);
+
+    if(rmdir("/sys/fs/cgroup/memory/lab4") == -1) perror("rmdir");
+    if(rmdir("/sys/fs/cgroup/cpu,cpuacct/lab4") == -1) perror("rmdir");
 
     if(WIFEXITED(status)) {
         printf("Child exited with code %d\n", WEXITSTATUS(status));
@@ -116,11 +126,7 @@ static int child(void *arg) {
     do_pivot(tmpdir);
     
     // mount something needed
-    mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
-    mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
-    mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
-    mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
-    // TODO: 在 /sys/fs/cgroup 下挂载指定的四类 cgroup 控制器
+    mount_needed();
     
     // send the tmpdir to parent process(host machine)
     close(carg.fds[0]);
@@ -133,11 +139,13 @@ static int child(void *arg) {
 
     // use seccomp
     set_seccomp();
+
+    // cgroup_limit()
+    cgroup_limit();
     
     execvp(args[2], args + 2);
     error_exit(255, "exec");
 }
-
 
 /*
  * This part is for pivot_root
@@ -179,6 +187,67 @@ int do_pivot(const char *tmpdir) {
     if (rmdir(put_old) == -1)
         errexit("[container][error] rmdir");
 }
+
+/*
+ * This part is for mount
+ */
+void mount_needed() {
+    mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
+    mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
+    mount("tmpfs", "/sys/fs/cgroup", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    mkdir("/sys/fs/cgroup/memory", 0777);
+    mount("cgroup", "/sys/fs/cgroup/memory", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "memory");
+    mkdir("/sys/fs/cgroup/cpu,cpuacct", 0777);
+    mount("cgroup", "/sys/fs/cgroup/cpu,cpuacct", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "cpu,cpuacct");
+    mkdir("/sys/fs/cgroup/pids", 0777);
+    mount("cgroup", "/sys/fs/cgroup/pids", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "pids");
+    mkdir("/sys/fs/cgroup/blkio", 0777);
+    mount("cgroup", "/sys/fs/cgroup/blkio", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "blkio");
+}
+
+/*
+ * This part is for cgroup
+ */
+#define APPEND 0
+#define OVERWRITE 1
+int write_str(const char *fname, const char *str, int mode) {
+    int fd;
+    if(mode == APPEND)
+        fd = open(fname, O_WRONLY|O_CREAT|O_APPEND, 0777);
+    else if(mode == OVERWRITE)
+        fd = open(fname, O_WRONLY|O_CREAT|O_TRUNC, 0777);
+    else return -1;
+    write(fd, str, strlen(str));
+    close(fd);
+    return 0;
+}
+
+void cgroup_limit() {
+    pid_t pid = getpid();
+    //printf("get pid: %d\n", pid);
+    char pid_str[32];
+    sprintf(pid_str, "%d", pid);
+
+    // memory part
+    mkdir("/sys/fs/cgroup/memory/lab4", 0777);
+    //// limit user memory as 67108864 bytes
+    write_str("/sys/fs/cgroup/memory/lab4/memory.limit_in_bytes", "67108864", OVERWRITE);
+    //// limit user kernel as 67108864 bytes
+    write_str("/sys/fs/cgroup/memory/lab4/memory.kmem.limit_in_bytes", "67108864", OVERWRITE);
+    //// disable swap
+    write_str("/sys/fs/cgroup/memory/lab4/memory.swappiness", "0", OVERWRITE);
+    write_str("/sys/fs/cgroup/memory/lab4/cgroup.procs", pid_str, APPEND);
+
+    // cpu part
+    mkdir("/sys/fs/cgroup/cpu,cpuacct/lab4", 0777);
+    //// limit cpu.shares
+    write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cpu.shares", "1", OVERWRITE);
+    write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cgroup.procs", pid_str, APPEND);
+
+}
+
 
 /*
  * This part is for capabilities
