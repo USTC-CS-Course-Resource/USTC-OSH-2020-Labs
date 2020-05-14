@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <string.h>       
 #include <sys/stat.h>
+#include <cap-ng.h>
 
 
 #define STACK_SIZE (1024 * 1024) // 1 MiB
@@ -27,6 +28,16 @@ void error_exit(int code, const char *message);
 static int child(void *arg);
 // implement the pivot_root by syscall
 static int pivot_root(const char *new_root, const char *put_old);
+/* 
+ * Function: do_pivot
+ * Description: Do pivot, including 
+ *  rprivate "/",
+ *  binding "./" to tmpdir,
+ *  mkdir for oldroot,
+ *  invoke pivot_root(),
+ *  detach and rmdir,
+ */ 
+int do_pivot(const char *tmpdir);
 void errexit(const char *format, ...);
 
 typedef struct ChildArg {
@@ -67,7 +78,6 @@ int main(int argc, char **argv) {
         perror("[warning] umount2");
     if(rmdir(bind_path) == -1)
         perror("[warning] rmdir");
-    system("ls /tmp | grep lab4");
 
     wait(&status);
     if(WIFEXITED(status)) {
@@ -91,16 +101,45 @@ static int child(void *arg) {
     ChildArg carg = *((ChildArg*)arg);
     char **args = carg.args;
 
-    // create the directory for the old root
+    // create the tmpdir for container's rootfs
     char tmpdir[] = "/tmp/lab4-XXXXXX";
     mkdtemp(tmpdir);
+    printf("tmpdir: %s\n", tmpdir);
+
+    // pivot_root
+    do_pivot(tmpdir);
+    
+    // mount something needed
+    mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
+    mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
+    // TODO: 在 /sys/fs/cgroup 下挂载指定的四类 cgroup 控制器
+    
+    // send the tmpdir to parent process(host machine)
+    close(carg.fds[0]);
+    write(carg.fds[1], tmpdir, strlen(tmpdir)+1);
+    close(carg.fds[1]);
+
+    capng_clear(CAPNG_SELECT_BOTH);
+    capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE|CAPNG_PERMITTED,
+                  CAP_SETPCAP, CAP_MKNOD, CAP_AUDIT_WRITE,
+                  CAP_CHOWN, CAP_NET_RAW, CAP_DAC_OVERRIDE,
+                  CAP_FOWNER, CAP_FSETID, CAP_KILL,
+                  CAP_SETGID, CAP_SETUID, CAP_NET_BIND_SERVICE,
+                  CAP_SYS_CHROOT, CAP_SETFCAP, -1);
+    capng_apply(CAPNG_SELECT_BOTH);
+    
+    execvp(args[2], args + 2);
+    error_exit(255, "exec");
+}
+
+int do_pivot(const char *tmpdir) {
     char oldroot_path[PATH_SIZE_MAX];
     char put_old[] = "oldrootfs";
 
-    // expand the oldroot_path
+    // get the full path of oldroot_path
     snprintf(oldroot_path, sizeof(char)*PATH_SIZE_MAX, "%s/%s", tmpdir, put_old);
-    
-
     // recursively remount / as private
     if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
         errexit("[error] mount-MS_PRIVATE");
@@ -111,14 +150,7 @@ static int child(void *arg) {
 
     // make dir oldroot_path (may fail because of EEXIST)
     mkdir(oldroot_path, 0777);
-    printf("mkdir errno: %d\n", errno);
-
-    char ls_com[PATH_SIZE_MAX+3] = "ls ";
-    strcat(ls_com, tmpdir);
-    system(ls_com);
-
-    printf("access %s: %d\n", tmpdir, access(tmpdir, F_OK));
-    printf("access %s: %d\n", oldroot_path, access(oldroot_path, F_OK));
+    if(errno != 0) perror("[warning] mkdir");
 
     // And pivot the root filesystem
     if (pivot_root(tmpdir, oldroot_path) == -1)
@@ -133,19 +165,6 @@ static int child(void *arg) {
         errexit("[error] umount2(put_old, MNT_DETACH)");
     if (rmdir(put_old) == -1)
         errexit("[error] rmdir");
-    
-    mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
-    mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
-    mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
-    mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
-    // TODO: 在 /sys/fs/cgroup 下挂载指定的四类 cgroup 控制器
-    
-    close(carg.fds[0]);
-    write(carg.fds[1], tmpdir, strlen(tmpdir)+1);
-    close(carg.fds[1]);
-    
-    execvp(args[2], args + 2);
-    error_exit(255, "exec");
 }
 
 static int pivot_root(const char *new_root, const char *put_old)
@@ -157,7 +176,7 @@ void errexit(const char *format, ...) {
     va_list args;
     va_start(args, format);
     vfprintf(stderr, format, args);
-    fprintf(stderr, "\terrno: %d\n", errno);
+    perror("");
     va_end(args);
     exit(1);
 } 

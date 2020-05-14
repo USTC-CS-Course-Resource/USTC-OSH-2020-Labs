@@ -1,6 +1,10 @@
-# Lab4
+# Lab4踩坑记录(by Rabbit)
 
-## `chroot`和`systemd-nspawn`的行为差别测试
+yysy, 这个实验建议在虚拟机上完成. 本人已经历重装Ubuntu...
+
+## 1. 构建容器的根文件系统（rootfs）
+
+### `chroot`和`systemd-nspawn`的行为差别测试
 
 ||chroot|systemd-nspawn|
 |:-|:-|:-|
@@ -11,7 +15,7 @@
 |echo $$|8800|1|
 |reboot|System has not been booted with systemd as init system (PID 1). Can't operate. <br>Failed to talk to init daemon.|System has not been booted with systemd as init system (PID 1). Can't operate.<br>Failed to talk to init daemon.|
 
-### 查看`mountinfo`时
+#### 查看`mountinfo`时
 
 `chroot`没有这个文件, 需要自己去挂载proc等.
 
@@ -25,28 +29,7 @@ root@rootfs:/# cat /proc/self/mountinfo
 906 905 0:60 / /tmp rw,nosuid,nodev shared:435 - tmpfs tmpfs rw
 907 905 0:22 / /sys ro,nosuid,nodev,noexec,relatime shared:436 - sysfs sysfs rw
 908 905 0:62 / /dev rw,nosuid shared:437 - tmpfs tmpfs rw,mode=755
-909 908 0:63 / /dev/shm rw,nosuid,nodev shared:438 - tmpfs tmpfs rw
-910 908 0:65 / /dev/pts rw,nosuid,noexec,relatime shared:440 - devpts devpts rw,gid=5,mode=620,ptmxmode=666
-911 908 0:23 /1 /dev/console rw,nosuid,noexec,relatime shared:441 master:3 - devpts devpts rw,gid=5,mode=620,ptmxmode=000
-912 905 0:64 / /run rw,nosuid,nodev shared:439 - tmpfs tmpfs rw,mode=755
-913 912 0:24 /systemd/nspawn/propagate/rootfs /run/systemd/nspawn/incoming ro,relatime master:5 - tmpfs tmpfs rw,size=802664k,mode=755
-916 905 0:67 / /proc rw,nosuid,nodev,noexec,relatime shared:442 - proc proc rw
-851 916 0:67 /sys /proc/sys ro,nosuid,nodev,noexec,relatime shared:442 - proc proc rw
-580 916 0:67 /sysrq-trigger /proc/sysrq-trigger ro,nosuid,nodev,noexec,relatime shared:442 - proc proc rw
-567 907 0:68 / /sys/fs/cgroup ro,nosuid,nodev,noexec shared:443 - tmpfs tmpfs ro,mode=755
-569 567 0:36 / /sys/fs/cgroup/cpuset ro,nosuid,nodev,noexec,relatime shared:444 - cgroup cgroup rw,cpuset
-570 567 0:33 / /sys/fs/cgroup/memory ro,nosuid,nodev,noexec,relatime shared:445 - cgroup cgroup rw,memory
-572 567 0:31 / /sys/fs/cgroup/freezer ro,nosuid,nodev,noexec,relatime shared:446 - cgroup cgroup rw,freezer
-573 567 0:38 / /sys/fs/cgroup/devices ro,nosuid,nodev,noexec,relatime shared:447 - cgroup cgroup rw,devices
-574 567 0:39 / /sys/fs/cgroup/perf_event ro,nosuid,nodev,noexec,relatime shared:448 - cgroup cgroup rw,perf_event
-575 567 0:41 / /sys/fs/cgroup/rdma ro,nosuid,nodev,noexec,relatime shared:449 - cgroup cgroup rw,rdma
-576 567 0:35 / /sys/fs/cgroup/hugetlb ro,nosuid,nodev,noexec,relatime shared:450 - cgroup cgroup rw,hugetlb
-577 567 0:32 / /sys/fs/cgroup/net_cls,net_prio ro,nosuid,nodev,noexec,relatime shared:451 - cgroup cgroup rw,net_cls,net_prio
-578 567 0:34 / /sys/fs/cgroup/cpu,cpuacct ro,nosuid,nodev,noexec,relatime shared:452 - cgroup cgroup rw,cpu,cpuacct
-579 567 0:40 / /sys/fs/cgroup/pids ro,nosuid,nodev,noexec,relatime shared:453 - cgroup cgroup rw,pids
-581 567 0:37 / /sys/fs/cgroup/blkio ro,nosuid,nodev,noexec,relatime shared:454 - cgroup cgroup rw,blkio
-582 567 0:28 / /sys/fs/cgroup/unified rw,nosuid,nodev,noexec,relatime shared:455 - cgroup2 cgroup rw,nsdelegate
-583 567 0:29 / /sys/fs/cgroup/systemd rw,nosuid,nodev,noexec,relatime shared:456 - cgroup cgroup rw,xattr,name=systemd
+...
 584 851 0:64 /proc-sys-kernel-random-boot-id//deleted /proc/sys/kernel/random/boot_id ro,nosuid,nodev shared:439 - tmpfs tmpfs rw,mode=755
 585 916 0:64 /proc-sys-kernel-random-boot-id//deleted /proc/sys/kernel/random/boot_id rw,nosuid,nodev shared:439 - tmpfs tmpfs rw,mode=755
 586 916 0:64 /kmsg//deleted /proc/kmsg rw,nosuid,nodev shared:439 - tmpfs tmpfs rw,mode=755
@@ -54,41 +37,44 @@ root@rootfs:/# cat /proc/self/mountinfo
 
 [systemd-nspawn的一些介绍](https://linux.cn/article-4678-1.html)
 
-## 设置了CLONE_NEWNS, 退出后mount查看还在？
+## 2. 使用 clone(2) 代替 fork(2)，并隔离命名空间
+
+## 3. 在容器中使用 mount(2) 与 mknod(2) 挂载必要的文件系统结构
+
+### 设置了CLONE_NEWNS, 退出后mount查看还在？
 
 在宿主机用以下命令查看`/home`挂载是否为`shared`的.
 ```bash
 cat /proc/self/mountinfo | grep "/ /home"
 ```
 
-若是, 执行以下命令以挂载为`private`
-```bash
-mount --make-rprivate -o remount /home
-```
-
-或者使用如下代码
+使用如下代码, 将根目录递归挂载为私有:
 ```c
 if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
     errexit("[error] mount-MS_PRIVATE\n");
 ```
 
+> 注: 似乎助教也不是这样做的, 不建议用此方法.
+
 [参考](https://bugzilla.redhat.com/show_bug.cgi?id=830427)
 
-## `syscall`的使用
+## 3. 使用 pivot_root(2) 替代 chroot(2) 完成容器内根文件系统的切换
+
+### `syscall`的使用
 
 [syscall文档](http://man7.org/linux/man-pages/man2/syscall.2.html)
 
-### 函数介绍
+#### 函数介绍
 
 `syscall`是用于调用没有C封装的汇编语言接口的. 需要包含头文件`<sys/syscall.h>`
 
-### 使用方法
+#### 使用方法
 
-#### 宏定义
+##### 宏定义
 
 文档明确指出, 需要宏定义`_DEFAULT_SOURCE`(glibc 2.19之后, 之前有另外的宏定义).
 
-#### `x86_64`的传参方式
+##### `x86_64`的传参方式
 
 |Arch/ABI|Instruction|System call #|Ret val|Ret val2|Error|Notes|
 |:-|:-|:-|:-|:-|:-|:-|
@@ -98,7 +84,7 @@ if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
 |:-|:-|:-|:-|:-|:-|:-|:-|:-|
 |x86-64|rdi|rsi|rdx|r10|r8|r9|-|
 
-### 示例代码
+#### 示例代码
 
 ```c
 #define _GNU_SOURCE
@@ -117,9 +103,9 @@ main(int argc, char *argv[])
 }
 ```
 
-## `pivot_root`的使用
+### `pivot_root`的使用
 
-### 函数说明
+#### 函数说明
 
 ```c
 int pivot_root(const char *new_root, const char *put_old);
@@ -128,11 +114,11 @@ int pivot_root(const char *new_root, const char *put_old);
 这个函数将原有根文件系统移到`put_old`, 并将根文件系统`pivot`到`new_root`.  
 其中, `put_old`必须为`new_root`的子孙文件夹.
 
-### 函数示例
+#### 函数示例
 
 见[pivot_root文档](http://man7.org/linux/man-pages/man2/pivot_root.2.html)末尾
 
-## 步骤`从主机上隐藏容器的根文件系统`中, 主机对应文件夹并无挂载
+### 步骤`从主机上隐藏容器的根文件系统`中, 主机对应文件夹并无挂载容器根文件系统
 
 可能在子进程中递归私有化了宿主机根文件系统的挂载点, 比如
 
@@ -143,3 +129,16 @@ if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
 ```
 
 这种情况下, 在父进程(主机上)也就自然没有子进程在`/tmp/lab4-tkytql`上挂载的容器根文件系统的挂载信息(因为隔离了挂载信息), 即不会传播到主机. 因此只需要使用`rmdir`删除`/tmp/lab4-tkytql`即可(这一点我问过助教了)
+
+## 4. 使用 libcap 为容器缩减不必要的能力（capabilities）
+
+### libcap-ng文档的主要信息提取
+
+> 既然这个简单当然使用这个啦:grin:
+
+[libcap-ng主页](https://people.redhat.com/sgrubb/libcap-ng/)
+[libcap-ng的man列表](http://man7.org/linux/man-pages/dir_by_project.html#libcap-ng)
+
+1. 可以用`netcap`查看网络能力, 用`pscap`查看各进程能力.
+2. `#include <cap-ng.h>`
+3. capability白名单列表: CAP_SETPCAP, CAP_MKNOD, CAP_AUDIT_WRITE, CAP_CHOWN, CAP_NET_RAW, CAP_DAC_OVERRIDE, CAP_FOWNER, CAP_FSETID, CAP_KILL, CAP_SETGID, CAP_SETUID, CAP_NET_BIND_SERVICE, CAP_SYS_CHROOT, CAP_SETFCAP
