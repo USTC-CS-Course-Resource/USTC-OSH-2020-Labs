@@ -29,6 +29,11 @@ static int child(void *arg);
 static int pivot_root(const char *new_root, const char *put_old);
 void errexit(const char *format, ...);
 
+typedef struct ChildArg {
+    char **args;
+    int fds[2];
+} ChildArg;
+
 int main(int argc, char **argv) {
     if (argc < 3) {
         fprintf(stderr, usage, argv[0]);
@@ -44,11 +49,23 @@ int main(int argc, char **argv) {
     // Assume stack grows downwards
     void *child_stack_start = child_stack + STACK_SIZE;
 
+    // for requesting detach
+    ChildArg carg;
+    carg.args = argv;
+    pipe(carg.fds);
+
     int container_pid = clone(child, child_stack_start,
                    SIGCHLD | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID | CLONE_NEWCGROUP,
-                   argv);
+                   &carg);
     
     int status, ecode = 0;
+    close (carg.fds[1]);
+    char bind_path[PATH_SIZE_MAX];
+    read(carg.fds[0], bind_path, PATH_SIZE_MAX);
+
+    if (umount2(bind_path, MNT_DETACH) == -1)
+        perror("[error] umount2");
+
     wait(&status);
     if (WIFEXITED(status)) {
         printf("Child exited with code %d\n", WEXITSTATUS(status));
@@ -73,7 +90,8 @@ sudo mount --make-private -o remount /
 */
 static int child(void *arg) {
     // recv the arg
-    char **args = arg;
+    ChildArg carg = *((ChildArg*)arg);
+    char **args = carg.args;
 
     // create the directory for the old root
     char tmpdir[] = "/tmp/lab4-XXXXXX";
@@ -108,13 +126,18 @@ static int child(void *arg) {
     // Switch the current working directory to "/"
     if (chdir("/") == -1)
         errexit("[error] chdir");
-
+        
+    close(carg.fds[0]);
+    write(carg.fds[1], tmpdir, strlen(tmpdir)+1);
+    close(carg.fds[1]);
+    /*
     // Unmount old root and remove mount point
     if (umount2(put_old, MNT_DETACH) == -1)
         perror("[error] umount2");
     if (rmdir(put_old) == -1)
-        perror("[error] rmdir");
+        perror("[error] rmdir");*/
 
+    
     mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
     mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
     mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
