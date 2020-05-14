@@ -142,3 +142,22 @@ if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
 1. 可以用`netcap`查看网络能力, 用`pscap`查看各进程能力.
 2. `#include <cap-ng.h>`
 3. capability白名单列表: CAP_SETPCAP, CAP_MKNOD, CAP_AUDIT_WRITE, CAP_CHOWN, CAP_NET_RAW, CAP_DAC_OVERRIDE, CAP_FOWNER, CAP_FSETID, CAP_KILL, CAP_SETGID, CAP_SETUID, CAP_NET_BIND_SERVICE, CAP_SYS_CHROOT, CAP_SETFCAP
+
+## 5. 使用 libseccomp 对容器中的系统调用进行白名单过滤
+
+1. 初始化过滤器
+```c
+scmp_filter_ctx seccomp_init(uint32_t def_action);
+```
+2. 加入规则
+```c
+int seccomp_rule_add(scmp_filter_ctx ctx, uint32_t action, int syscall, unsigned int arg_cnt, ...);
+```
+3. 载入内核
+```c
+int seccomp_load(scmp_filter_ctx ctx);
+```
+4. 释放
+```c
+void seccomp_release(scmp_filter_ctx ctx);
+```

@@ -1,19 +1,21 @@
-#define _GNU_SOURCE     // Required for enabling clone(2)
+#define _GNU_SOURCE         // Required for enabling clone(2)
 #include <stdio.h>
-#include <unistd.h>
-#include <stdlib.h>     // For mkdtemp(3)
-#include <sys/types.h>  // For wait(2)
-#include <sys/wait.h>   // For wait(2)
-#include <sched.h>      // For clone(2)
-#include <signal.h>     // For SIGCHLD constant
-#include <sys/mman.h>   // For mmap(2)
-#include <sys/mount.h>  // For mount(2)
-#include <sys/syscall.h>    // For syscall(2)
-#include <stdarg.h>
-#include <errno.h>
 #include <string.h>       
+#include <unistd.h>
 #include <sys/stat.h>
-#include <cap-ng.h>
+#include <stdlib.h>         // For mkdtemp(3)
+#include <sys/types.h>      // For wait(2)
+#include <sys/wait.h>       // For wait(2)
+#include <sched.h>          // For clone(2)
+#include <signal.h>         // For SIGCHLD constant
+#include <sys/mman.h>       // For mmap(2)
+#include <sys/mount.h>      // For mount(2)
+#include <sys/syscall.h>    // For syscall(2)
+#include <errno.h>          // For errno
+#include <cap-ng.h>         // For libcap-ng series functions
+#include <seccomp.h>        // For seccomp series functions
+#include "syscall_filter.h"
+#include "utility.h"
 
 
 #define STACK_SIZE (1024 * 1024) // 1 MiB
@@ -24,14 +26,13 @@ const char *usage =
 "\n"
 "  Run <directory> as a container and execute <command>.\n";
 
-// Part I. For Container
+// Part I.      For isolation and pivot_root
 typedef struct ChildArg {
     char **args;
     int fds[2];
 } ChildArg;
 static int child(void *arg);
 // implement the pivot_root by syscall
-static int pivot_root(const char *new_root, const char *put_old);
 /* 
  * Function: do_pivot
  * Description: Do pivot, including 
@@ -42,13 +43,16 @@ static int pivot_root(const char *new_root, const char *put_old);
  *  detach and rmdir,
  */ 
 int do_pivot(const char *tmpdir);
+
+// Part II.     For capabilities
 void check_needed_cap();
 void update_needed_cap();
 
+// Part III.    For seccomp
+void set_seccomp();
+
 // Part II. some utilities
 void error_exit(int code, const char *message);
-void logger(const char *type, const char *format, ...);
-void errexit(const char *format, ...);
 
 int main(int argc, char **argv) {
     if (argc < 3) {
@@ -80,7 +84,10 @@ int main(int argc, char **argv) {
     read(carg.fds[0], bind_path, PATH_SIZE_MAX);
     
     umount2(bind_path, MNT_DETACH);
-    rmdir(bind_path);
+    if(rmdir(bind_path) == -1) {
+        perror("rmdir");
+    }
+    
 
     wait(&status);
 
@@ -93,11 +100,6 @@ int main(int argc, char **argv) {
         ecode = -WTERMSIG(status);
     }
     return ecode;
-}
-
-void error_exit(int code, const char *message) {
-    perror(message);
-    _exit(code);
 }
 
 static int child(void *arg) {
@@ -128,9 +130,21 @@ static int child(void *arg) {
     // update capabilities and check them
     update_needed_cap();
     check_needed_cap();
+
+    // use seccomp
+    set_seccomp();
     
     execvp(args[2], args + 2);
     error_exit(255, "exec");
+}
+
+
+/*
+ * This part is for pivot_root
+ */ 
+static int pivot_root(const char *new_root, const char *put_old)
+{
+    return syscall(SYS_pivot_root, new_root, put_old);
 }
 
 int do_pivot(const char *tmpdir) {
@@ -166,6 +180,9 @@ int do_pivot(const char *tmpdir) {
         errexit("[container][error] rmdir");
 }
 
+/*
+ * This part is for capabilities
+ */ 
 #define CAPS_NUM 14
 #define CAP_STR_SIZE_MAX 22
 #define CAPS CAP_SETPCAP, CAP_MKNOD, CAP_AUDIT_WRITE,\
@@ -204,24 +221,3 @@ void check_needed_cap() {
     }
 }
 
-static int pivot_root(const char *new_root, const char *put_old)
-{
-    return syscall(SYS_pivot_root, new_root, put_old);
-}
-
-void logger(const char *type, const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    fprintf(stderr, "[container][%s] ", type);
-    vfprintf(stderr, format, args);
-    va_end(args);
-} 
-
-void errexit(const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    vfprintf(stderr, format, args);
-    perror("");
-    va_end(args);
-    exit(1);
-} 
