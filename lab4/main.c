@@ -104,12 +104,6 @@ static int child(void *arg) {
         errexit("[error] pivot_root");
     }
 
-    mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
-    mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
-    mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
-    mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
-    // TODO: 在 /sys/fs/cgroup 下挂载指定的四类 cgroup 控制器
-/*
     // Switch the current working directory to "/"
     if (chdir("/") == -1)
         errexit("[error] chdir");
@@ -119,7 +113,12 @@ static int child(void *arg) {
         perror("[error] umount2");
     if (rmdir(put_old) == -1)
         perror("[error] rmdir");
-    */
+
+    mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
+    mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
+    // TODO: 在 /sys/fs/cgroup 下挂载指定的四类 cgroup 控制器
     
     execvp(args[2], args + 2);
     error_exit(255, "exec");
