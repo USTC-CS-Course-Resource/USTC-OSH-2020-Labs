@@ -24,9 +24,12 @@ const char *usage =
 "\n"
 "  Run <directory> as a container and execute <command>.\n";
 
-void error_exit(int code, const char *message);
+// Part I. For Container
+typedef struct ChildArg {
+    char **args;
+    int fds[2];
+} ChildArg;
 static int child(void *arg);
-void errexit(const char *format, ...);
 // implement the pivot_root by syscall
 static int pivot_root(const char *new_root, const char *put_old);
 /* 
@@ -42,10 +45,10 @@ int do_pivot(const char *tmpdir);
 void check_needed_cap();
 void update_needed_cap();
 
-typedef struct ChildArg {
-    char **args;
-    int fds[2];
-} ChildArg;
+// Part II. some utilities
+void error_exit(int code, const char *message);
+void logger(const char *type, const char *format, ...);
+void errexit(const char *format, ...);
 
 int main(int argc, char **argv) {
     if (argc < 3) {
@@ -76,12 +79,11 @@ int main(int argc, char **argv) {
     char bind_path[PATH_SIZE_MAX] = {'\0'};
     read(carg.fds[0], bind_path, PATH_SIZE_MAX);
     
-    if(umount2(bind_path, MNT_DETACH) == -1)
-        perror("[warning] umount2");
-    if(rmdir(bind_path) == -1)
-        perror("[warning] rmdir");
+    umount2(bind_path, MNT_DETACH);
+    rmdir(bind_path);
 
     wait(&status);
+
     if(WIFEXITED(status)) {
         printf("Child exited with code %d\n", WEXITSTATUS(status));
         ecode = WEXITSTATUS(status);
@@ -139,49 +141,52 @@ int do_pivot(const char *tmpdir) {
     snprintf(oldroot_path, sizeof(char)*PATH_SIZE_MAX, "%s/%s", tmpdir, put_old);
     // recursively remount / as private
     if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
-        errexit("[error] mount-MS_PRIVATE");
+        errexit("[container][error] mount-MS_PRIVATE");
     
     // bind the root of the container to tmpdir
     if (mount("./", tmpdir, NULL, MS_BIND, NULL) == -1)
-        errexit("[error] mount-MS_BIND");
+        errexit("[container][error] mount-MS_BIND");
 
     // make dir oldroot_path (may fail because of EEXIST)
     mkdir(oldroot_path, 0777);
-    if(errno != 0) perror("[warning] mkdir");
+    if(errno != 0) perror("[container][warning] mkdir");
 
     // And pivot the root filesystem
     if (pivot_root(tmpdir, oldroot_path) == -1)
-        errexit("[error] pivot_root");
+        errexit("[container][error] pivot_root");
 
     // Switch the current working directory to "/"
     if (chdir("/") == -1)
-        errexit("[error] chdir");
+        errexit("[container][error] chdir");
 
     // Unmount old root and remove mount point
     if (umount2(put_old, MNT_DETACH) == -1)
-        errexit("[error] umount2(put_old, MNT_DETACH)");
+        errexit("[container][error] umount2(put_old, MNT_DETACH)");
     if (rmdir(put_old) == -1)
-        errexit("[error] rmdir");
+        errexit("[container][error] rmdir");
 }
 
 #define CAPS_NUM 14
+#define CAP_STR_SIZE_MAX 22
 #define CAPS CAP_SETPCAP, CAP_MKNOD, CAP_AUDIT_WRITE,\
              CAP_CHOWN, CAP_NET_RAW, CAP_DAC_OVERRIDE,\
              CAP_FOWNER, CAP_FSETID, CAP_KILL,\
              CAP_SETGID, CAP_SETUID, CAP_NET_BIND_SERVICE,\
              CAP_SYS_CHROOT, CAP_SETFCAP
 
-const int CAPS_LIST[14] = {CAP_SETPCAP, CAP_MKNOD, CAP_AUDIT_WRITE,
-                           CAP_CHOWN, CAP_NET_RAW, CAP_DAC_OVERRIDE,
-                           CAP_FOWNER, CAP_FSETID, CAP_KILL,
-                           CAP_SETGID, CAP_SETUID, CAP_NET_BIND_SERVICE,
-                           CAP_SYS_CHROOT, CAP_SETFCAP};
+const int CAPS_LIST[14] = 
+    {CAP_SETPCAP, CAP_MKNOD, CAP_AUDIT_WRITE,
+     CAP_CHOWN, CAP_NET_RAW, CAP_DAC_OVERRIDE,
+     CAP_FOWNER, CAP_FSETID, CAP_KILL,
+     CAP_SETGID, CAP_SETUID, CAP_NET_BIND_SERVICE,
+     CAP_SYS_CHROOT, CAP_SETFCAP};
 
-const char CAPS_STR_LIST[14][20] = {"CAP_SETPCAP", "CAP_MKNOD", "CAP_AUDIT_WRITE",
-                                    "CAP_CHOWN", "CAP_NET_RAW", "CAP_DAC_OVERRIDE",
-                                    "CAP_FOWNER", "CAP_FSETID", "CAP_KILL",
-                                    "CAP_SETGID", "CAP_SETUID", "CAP_NET_BIND_SERVICE",
-                                    "CAP_SYS_CHROOT", "CAP_SETFCAP"};
+const char CAPS_STR_LIST[14][CAP_STR_SIZE_MAX] = 
+    {"CAP_SETPCAP", "CAP_MKNOD", "CAP_AUDIT_WRITE",
+     "CAP_CHOWN", "CAP_NET_RAW", "CAP_DAC_OVERRIDE",
+     "CAP_FOWNER", "CAP_FSETID", "CAP_KILL",
+     "CAP_SETGID", "CAP_SETUID", "CAP_NET_BIND_SERVICE",
+     "CAP_SYS_CHROOT", "CAP_SETFCAP"};
 
 void update_needed_cap() {
     capng_clear(CAPNG_SELECT_BOTH);
@@ -193,9 +198,9 @@ void update_needed_cap() {
 void check_needed_cap() {
     for(int i = 0; i < CAPS_NUM; i++) {
         if (capng_have_capability(CAPNG_EFFECTIVE, CAPS_LIST[i]))
-            printf("%s [√]\n", CAPS_STR_LIST[i]);
+            logger("info", "%22s\t[√]\n", CAPS_STR_LIST[i]);
         else
-            printf("%s [x]\n", CAPS_STR_LIST[i]);
+            logger("info", "%22s\t[x]\n", CAPS_STR_LIST[i]);
     }
 }
 
@@ -203,6 +208,14 @@ static int pivot_root(const char *new_root, const char *put_old)
 {
     return syscall(SYS_pivot_root, new_root, put_old);
 }
+
+void logger(const char *type, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    fprintf(stderr, "[container][%s] ", type);
+    vfprintf(stderr, format, args);
+    va_end(args);
+} 
 
 void errexit(const char *format, ...) {
     va_list args;
