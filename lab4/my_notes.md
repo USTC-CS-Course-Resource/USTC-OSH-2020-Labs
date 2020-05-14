@@ -74,10 +74,9 @@ if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
 
 [参考](https://bugzilla.redhat.com/show_bug.cgi?id=830427)
 
-## `pivot_root`与`syscall`的使用
+## `syscall`的使用
 
 [syscall文档](http://man7.org/linux/man-pages/man2/syscall.2.html)
-[pivot_root文档(其使用见示例代码)](http://man7.org/linux/man-pages/man2/pivot_root.2.html)
 
 ### 函数介绍
 
@@ -117,3 +116,18 @@ main(int argc, char *argv[])
     syscall(SYS_tgkill, getpid(), tid, SIGHUP);
 }
 ```
+
+## `pivot_root`的使用
+
+### 函数说明
+
+```c
+int pivot_root(const char *new_root, const char *put_old);
+```
+
+这个函数将原有根文件系统移到`put_old`, 并将根文件系统`pivot`到`new_root`.  
+其中, `put_old`必须为`new_root`的子孙文件夹.
+
+### 函数示例
+
+见[pivot_root文档](http://man7.org/linux/man-pages/man2/pivot_root.2.html)末尾
