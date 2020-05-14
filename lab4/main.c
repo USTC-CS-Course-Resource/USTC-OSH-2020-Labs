@@ -63,15 +63,22 @@ int main(int argc, char **argv) {
     char bind_path[PATH_SIZE_MAX];
     read(carg.fds[0], bind_path, PATH_SIZE_MAX);
 
-    if (umount2(bind_path, MNT_DETACH) == -1)
+    char ls_com[PATH_SIZE_MAX+3] = "ls ";
+    strcat(ls_com, bind_path);
+    printf("命令: %s\n", ls_com);
+    sleep(2);
+    system(ls_com);
+    if(umount2(bind_path, MNT_DETACH) == -1)
         perror("[error] umount2");
+    if(rmdir(bind_path) == -1)
+        perror("[error] rmdir");
 
     wait(&status);
-    if (WIFEXITED(status)) {
+    if(WIFEXITED(status)) {
         printf("Child exited with code %d\n", WEXITSTATUS(status));
         ecode = WEXITSTATUS(status);
     } 
-    else if (WIFSIGNALED(status)) {
+    else if(WIFSIGNALED(status)) {
         printf("Killed by signal %d\n", WTERMSIG(status));
         ecode = -WTERMSIG(status);
     }
@@ -126,16 +133,18 @@ static int child(void *arg) {
     // Switch the current working directory to "/"
     if (chdir("/") == -1)
         errexit("[error] chdir");
-        
-    close(carg.fds[0]);
-    write(carg.fds[1], tmpdir, strlen(tmpdir)+1);
-    close(carg.fds[1]);
-    /*
+    
+    system("ls \tmp");
+    printf("finish ls");
     // Unmount old root and remove mount point
     if (umount2(put_old, MNT_DETACH) == -1)
         perror("[error] umount2");
     if (rmdir(put_old) == -1)
-        perror("[error] rmdir");*/
+        perror("[error] rmdir");
+
+    close(carg.fds[0]);
+    write(carg.fds[1], tmpdir, strlen(tmpdir)+1);
+    close(carg.fds[1]);
 
     
     mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
