@@ -25,5 +25,6 @@ lab4/**
 !lab4/syscall_filter.h
 !lab4/utility.h
 !lab4/Makefile
-!lab4/my_notes.md
+!lab4/README.md
+!lab4/others/my_notes.md
 
