@@ -15,10 +15,7 @@
 #include <cap-ng.h>         // For libcap-ng series functions
 #include <seccomp.h>        // For seccomp series functions
 #include <fcntl.h>          // For file control
-
-#include "syscall_filter.h"
-#include "utility.h"
-
+#include <stdarg.h>         // For args
 
 #define STACK_SIZE (1024 * 1024) // 1 MiB
 #define PATH_SIZE_MAX 1024
@@ -264,7 +261,6 @@ void cgroup_limit() {
     //// limit cpu.shares
     write_str("/sys/fs/cgroup/blkio/lab4/blkio.weight", "50", OVERWRITE);
     write_str("/sys/fs/cgroup/blkio/lab4/cgroup.procs", pid_str, APPEND);
-
 }
 
 
