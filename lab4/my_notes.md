@@ -146,3 +146,7 @@ if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
 ## 5. 使用 libseccomp 对容器中的系统调用进行白名单过滤
 
 ## 6. 使用 cgroup 限制容器中的 CPU、内存、进程数与 I/O 优先级
+
+### 怎么测试`blkio`
+
+[blkio介绍](https://blog.csdn.net/qq_39333816/article/details/103610545)

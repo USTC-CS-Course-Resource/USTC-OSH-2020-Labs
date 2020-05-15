@@ -100,6 +100,8 @@ int main(int argc, char **argv) {
 
     if(rmdir("/sys/fs/cgroup/memory/lab4") == -1) perror("rmdir");
     if(rmdir("/sys/fs/cgroup/cpu,cpuacct/lab4") == -1) perror("rmdir");
+    if(rmdir("/sys/fs/cgroup/pids/lab4") == -1) perror("rmdir");
+    if(rmdir("/sys/fs/cgroup/blkio/lab4") == -1) perror("rmdir");
 
     if(WIFEXITED(status)) {
         printf("Child exited with code %d\n", WEXITSTATUS(status));
@@ -243,8 +245,20 @@ void cgroup_limit() {
     // cpu part
     mkdir("/sys/fs/cgroup/cpu,cpuacct/lab4", 0777);
     //// limit cpu.shares
-    write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cpu.shares", "1", OVERWRITE);
+    write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cpu.shares", "256", OVERWRITE);
     write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cgroup.procs", pid_str, APPEND);
+
+    // pids part
+    mkdir("/sys/fs/cgroup/pids/lab4", 0777);
+    //// limit cpu.shares
+    write_str("/sys/fs/cgroup/pids/lab4/pids.max", "64", OVERWRITE);
+    write_str("/sys/fs/cgroup/pids/lab4/cgroup.procs", pid_str, APPEND);
+
+    // blkio part
+    mkdir("/sys/fs/cgroup/blkio/lab4", 0777);
+    //// limit cpu.shares
+    write_str("/sys/fs/cgroup/blkio/lab4/blkio.weight", "50", OVERWRITE);
+    write_str("/sys/fs/cgroup/blkio/lab4/cgroup.procs", pid_str, APPEND);
 
 }
 
