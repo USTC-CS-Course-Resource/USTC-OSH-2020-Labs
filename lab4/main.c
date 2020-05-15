@@ -268,7 +268,7 @@ void cgroup_limit() {
 }
 
 
-/*s
+/*
  * This part is for capabilities
  */ 
 #define CAPS_NUM 14
