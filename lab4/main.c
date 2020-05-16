@@ -193,17 +193,26 @@ int do_pivot(const char *tmpdir) {
  * This part is for mount
  */
 void mount_needed() {
+    // mount /dev
     mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    // mount /proc
     mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    // mount /sys
     mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
+    // mount /tmp
     mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
+    // mount cgroup
     mount("tmpfs", "/sys/fs/cgroup", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    // mounot cgroup/memory
     mkdir("/sys/fs/cgroup/memory", 0777);
     mount("cgroup", "/sys/fs/cgroup/memory", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "memory");
+    // mounot cgroup/cpu,cpuacct
     mkdir("/sys/fs/cgroup/cpu,cpuacct", 0777);
     mount("cgroup", "/sys/fs/cgroup/cpu,cpuacct", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "cpu,cpuacct");
+    // mounot cgroup/pids
     mkdir("/sys/fs/cgroup/pids", 0777);
     mount("cgroup", "/sys/fs/cgroup/pids", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "pids");
+    // mounot cgroup/blkio
     mkdir("/sys/fs/cgroup/blkio", 0777);
     mount("cgroup", "/sys/fs/cgroup/blkio", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "blkio");
 }
