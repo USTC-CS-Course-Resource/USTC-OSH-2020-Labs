@@ -212,9 +212,6 @@ void mount_needed() {
     // mounot cgroup/pids
     mkdir("/sys/fs/cgroup/pids", 0777);
     mount("cgroup", "/sys/fs/cgroup/pids", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "pids");
-    // mounot cgroup/blkio
-    mkdir("/sys/fs/cgroup/blkio", 0777);
-    mount("cgroup", "/sys/fs/cgroup/blkio", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "blkio");
 }
 
 /*
@@ -264,12 +261,6 @@ void cgroup_limit() {
     //// limit cpu.shares
     write_str("/sys/fs/cgroup/pids/lab4/pids.max", "64", OVERWRITE);
     write_str("/sys/fs/cgroup/pids/lab4/cgroup.procs", pid_str, APPEND);
-
-    // blkio part
-    mkdir("/sys/fs/cgroup/blkio/lab4", 0777);
-    //// limit cpu.shares
-    write_str("/sys/fs/cgroup/blkio/lab4/blkio.weight", "50", OVERWRITE);
-    write_str("/sys/fs/cgroup/blkio/lab4/cgroup.procs", pid_str, APPEND);
 }
 
 

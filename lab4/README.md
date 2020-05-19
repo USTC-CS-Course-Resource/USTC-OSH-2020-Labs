@@ -5,16 +5,8 @@
 ### 1
 助教说: 
 > 在容器中使用 mount(2) 与 mknod(2) 挂载必要的文件系统结构
+
 但是没有看到对 `mknod` 的相关详细要求.
-
-### 2
-`/tmp` 的挂载只是简单挂载一个 `tmpfs` 吗？
-
-### 3
-seccomp 这步是直接每个系统调用写一条 `add_rule` 吗？
-
-### 4
-`blkio`的权重还不知道怎么分配, 网上说有 `blkio.weight` 这一项, 但我的系统中没有.
 
 ## 实现的简要描述
 
@@ -27,7 +19,7 @@ seccomp 这步是直接每个系统调用写一条 `add_rule` 吗？
 命名空间隔离只需要在 `clone` 时填入对应参数即可, 如下
 
 ```c
-lone(child, child_stack_start,
+clone(child, child_stack_start,
             SIGCHLD | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID | CLONE_NEWCGROUP,
             &carg);
 ```
