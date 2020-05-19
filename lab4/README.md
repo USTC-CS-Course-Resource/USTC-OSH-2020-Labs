@@ -8,6 +8,46 @@
 
 但是没有看到对 `mknod` 的相关详细要求.
 
+## 思考题的回答
+
+### 1
+
+#### 问题
+
+> 用于限制进程能够进行的系统调用的 seccomp 模块实际使用的系统调用是哪个？用于控制进程能力的 capabilities 实际使用的系统调用是哪个？尝试说明为什么本文最上面认为「该系统调用非常复杂」。
+
+#### 回答
+
+> 根据`strace`的跟踪结果：
+> 1. `seccomp 模块` 实际使用系统调用应为`seccomp(2)` 和 `prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)`(用以禁用特权) . 按照 man 文档的说明, 在 `SECCOMP_SET_MODE_FILTER` 模式下, 可以通过 `BPF` 来过滤任意系统调用.
+> 其**复杂之处**在于要构建BPF过滤器, 这涉及到十分复杂的BPF的指令及机器架构信息(从[seccomp的man手册](http://www.man7.org/linux/man-pages/man2/seccomp.2.html)中示例代码可见), 很难在一时间内完成.
+> 2. 控制能力的模块实际系统调用主要包括 `capget(2)`, `capset(2)` 以及 `prctl(2)` 以执行 `PR_CAPBSET_DROP` (丢弃能力)
+> 其**复杂之处**在于调用 `capget(2)` 和 `capset(2)` 的复杂位操作
+
+#### 参考资料
+
+[seccomp(2)](http://www.man7.org/linux/man-pages/man2/seccomp.2.html)
+
+### 2
+
+#### 问题
+
+> 当你用 cgroup 限制了容器中的 CPU 与内存等资源后，容器中的所有进程都不能够超额使用资源，但是诸如 htop 等「任务管理器」类的工具仍然会显示主机上的全部 CPU 和内存（尽管无法使用）。查找资料，说明原因，尝试提出一种解决方案，使任务管理器一类的程序能够正确显示被限制后的可用 CPU 和内存（不要求实现）。
+
+#### 回答
+
+> 为了解决这个问题, 我首先使用 `strace` 来跟踪诸如 `top`, `free` 等命令是如何获取包括内存, CPU等的信息的. 通过一番搜查, 我发现它们是读取了一些**特殊只读文件**来获取信息的.(查找资料后发现也是如此) 比如, 可以从 `/proc/stat`, `/proc/meminfo`等 中读取(并且经过检验, 在容器内, `/proc/meminfo` 等**依然为未限制之前的值**). 
+> 那么问题就在于, 怎么才能让 `/proc` 中的信息正确呢? [查找资料的时候](https://time.geekbang.org/column/article/14653)发现, `LXCFS` 可能可以做到.
+> `LXCFS`是基于`FUSE`(FileSystem in Userspace)实现的一套文件系统. "`LXCFS`的FUSE实现会从容器对应的Cgroup中读取正确的内存限制. 从而使得应用获得正确的资源约束设定". 这就使得我们可以在容器中继续使用 `top` 等命令.
+
+#### 参考资料
+
+[/proc/meminfo之谜](http://linuxperf.com/?p=142)
+[linux内存占用分析之meminfo](https://segmentfault.com/a/1190000022518282)
+[06 | 白话容器基础（二）：隔离与限制](https://time.geekbang.org/column/article/14653)
+[lxcfs 是什么？ 怎样通过 lxcfs 在容器内显示容器的 CPU、内存状态](https://www.lijiaocn.com/%E6%8A%80%E5%B7%A7/2019/01/09/kubernetes-lxcfs-docker-container.html)
+
+
 ## 实现的简要描述
 
 ### clone 部分
