@@ -202,7 +202,7 @@ void mount_needed() {
     // mount /tmp
     mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
     // mount cgroup
-    mount("tmpfs", "/sys/fs/cgroup", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    mount("cgroup", "/sys/fs/cgroup", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
     // mounot cgroup/memory
     mkdir("/sys/fs/cgroup/memory", 0777);
     mount("cgroup", "/sys/fs/cgroup/memory", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "memory");
@@ -314,7 +314,7 @@ void set_seccomp() {
     ctx = seccomp_init(SCMP_ACT_KILL);
     if (ctx == NULL)
             goto out;
-
+            
     // line 54 names 
     if(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(accept), 0)) goto out;
     if(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(accept4), 0)) goto out;
