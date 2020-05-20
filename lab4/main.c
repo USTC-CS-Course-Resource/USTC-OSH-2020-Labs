@@ -25,11 +25,12 @@ const char *usage =
 "\n"
 "  Run <directory> as a container and execute <command>.\n";
 
-// Part I.      For isolation and pivot_root
 typedef struct ChildArg {
     char **args;
-    int fds[2];
+    int fds_c2p[2];
 } ChildArg;
+
+// Part I.      For isolation and pivot_root
 static int child(void *arg);
 // implement the pivot_root by syscall
 /* 
@@ -54,7 +55,9 @@ void update_needed_cap();
 void set_seccomp();
 
 // Part V.    For cgroup limit
+void mount_cgroup_needed();
 void cgroup_limit();
+void cgroup_append();
 
 // Part VI. some utilities
 void error_exit(int code, const char *message);
@@ -79,16 +82,16 @@ int main(int argc, char **argv) {
     // for requesting detach
     ChildArg carg;
     carg.args = argv;
-    pipe(carg.fds);
+    pipe(carg.fds_c2p);
 
     int container_pid = clone(child, child_stack_start,
                    SIGCHLD | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID | CLONE_NEWCGROUP,
                    &carg);
-    
+	
     int status, ecode = 0;
-    close (carg.fds[1]);
+    close (carg.fds_c2p[1]);
     char bind_path[PATH_SIZE_MAX] = {'\0'};
-    read(carg.fds[0], bind_path, PATH_SIZE_MAX);
+    read(carg.fds_c2p[0], bind_path, PATH_SIZE_MAX);
     
     umount2(bind_path, MNT_DETACH);
     if(rmdir(bind_path) == -1)
@@ -96,6 +99,7 @@ int main(int argc, char **argv) {
         
     
     wait(&status);
+	cgroup_append();
 
     if(rmdir("/sys/fs/cgroup/memory/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/memory/lab4\") ");
     if(rmdir("/sys/fs/cgroup/cpu,cpuacct/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/cpu,cpuacct/lab4\")");
@@ -117,6 +121,9 @@ static int child(void *arg) {
     ChildArg carg = *((ChildArg*)arg);
     char **args = carg.args;
 
+	// set cgroup limit
+	cgroup_limit(getpid());
+
     // create the tmpdir for container's rootfs
     char tmpdir[] = "/tmp/lab4-XXXXXX";
     mkdtemp(tmpdir);
@@ -127,11 +134,12 @@ static int child(void *arg) {
     
     // mount something needed
     mount_needed();
+	mount_cgroup_needed();
     
     // send the tmpdir to parent process(host machine)
-    close(carg.fds[0]);
-    write(carg.fds[1], tmpdir, strlen(tmpdir)+1);
-    close(carg.fds[1]);
+    close(carg.fds_c2p[0]);
+    write(carg.fds_c2p[1], tmpdir, strlen(tmpdir) + 1);
+    close(carg.fds_c2p[1]);
 
     // update capabilities and check them
     update_needed_cap();
@@ -141,7 +149,7 @@ static int child(void *arg) {
     set_seccomp();
 
     // cgroup_limit()
-    cgroup_limit();
+    //cgroup_limit(getpid());
     
     execvp(args[2], args + 2);
     error_exit(255, "exec");
@@ -202,14 +210,18 @@ void mount_needed() {
     mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
     // mount cgroup
     mount("cgroup", "/sys/fs/cgroup", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+}
+
+void mount_cgroup_needed() {
     // mounot cgroup/memory
-    mkdir("/sys/fs/cgroup/memory", 0777);
+    mkdir("/sys/fs/cgroup/memory", 0755);
     mount("cgroup", "/sys/fs/cgroup/memory", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "memory");
+	system("ls /sys/fs/cgroup/memory");
     // mounot cgroup/cpu,cpuacct
-    mkdir("/sys/fs/cgroup/cpu,cpuacct", 0777);
+    mkdir("/sys/fs/cgroup/cpu,cpuacct", 0755);
     mount("cgroup", "/sys/fs/cgroup/cpu,cpuacct", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "cpu,cpuacct");
     // mounot cgroup/pids
-    mkdir("/sys/fs/cgroup/pids", 0777);
+    mkdir("/sys/fs/cgroup/pids", 0755);
     mount("cgroup", "/sys/fs/cgroup/pids", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "pids");
 }
 
@@ -218,30 +230,42 @@ void mount_needed() {
  */
 #define APPEND 0
 #define OVERWRITE 1
+#define BUF_SIZE 1024
 int write_str(const char *fname, const char *str, int mode) {
     int fd;
     if(mode == APPEND)
-        fd = open(fname, O_WRONLY|O_CREAT|O_APPEND, 0777);
+        fd = open(fname, O_WRONLY | O_CREAT | O_APPEND, 0777);
     else if(mode == OVERWRITE)
-        fd = open(fname, O_WRONLY|O_CREAT|O_TRUNC, 0777);
+        fd = open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0777);
     else return -1;
     write(fd, str, strlen(str));
     close(fd);
     return 0;
 }
 
-/*
- * For cgroup limiting
- */
-void cgroup_limit() {
-    pid_t pid = getpid();
-    //printf("get pid: %d\n", pid);
+int append(const char *src, const char *dest) {
+    int src_fd = open(src, O_RDONLY, 0777);
+	int dest_fd = open(dest, O_WRONLY | O_CREAT | O_APPEND, 0777);
+	char buffer[BUF_SIZE];
+	char *p = buffer;
+	ssize_t size;
+	while((size = read(src_fd, buffer, BUF_SIZE)) == BUF_SIZE) {
+		write(dest_fd, buffer, BUF_SIZE);
+	}
+	write(dest_fd, buffer, size);
+
+	close(src_fd);
+	close(dest_fd);
+    return 0;
+}
+
+void cgroup_limit(int pid) {
     char pid_str[32];
-    sprintf(pid_str, "%d", pid);
+    sprintf(pid_str, "%d\n", pid);
 
     // memory part
     if(mkdir("/sys/fs/cgroup/memory/lab4", 0777) == -1)
-        perror("[container][error] ");
+        perror("[container][error] mkdir(\"/sys/fs/cgroup/memory/lab4\", 0777) ");
     //// limit user memory as 67108864 bytes
     write_str("/sys/fs/cgroup/memory/lab4/memory.limit_in_bytes", "67108864", OVERWRITE);
     //// limit user kernel as 67108864 bytes
@@ -258,9 +282,19 @@ void cgroup_limit() {
 
     // pids part
     mkdir("/sys/fs/cgroup/pids/lab4", 0777);
-    //// limit cpu.shares
+    //// limit pids.max
     write_str("/sys/fs/cgroup/pids/lab4/pids.max", "64", OVERWRITE);
     write_str("/sys/fs/cgroup/pids/lab4/cgroup.procs", pid_str, APPEND);
+}
+
+// let inside procs information be appended to outside ones
+void cgroup_append() {
+    // memory part
+	append("/sys/fs/cgroup/memory/lab4/cgroup.procs", "/sys/fs/cgroup/memory/cgroup.procs");
+    // cpu part
+	append("/sys/fs/cgroup/cpu,cpuacct/lab4/cgroup.procs", "/sys/fs/cgroup/cpu,cpuacct/cgroup.procs");
+    // pids part
+	append("/sys/fs/cgroup/pids/lab4/cgroup.procs", "/sys/fs/cgroup/pids/cgroup.procs");
 }
 
 
