@@ -16,6 +16,7 @@
 #include <seccomp.h>        // For seccomp series functions
 #include <fcntl.h>          // For file control
 #include <stdarg.h>         // For args
+#include <sys/sysmacros.h>	// For mknod
 
 #define STACK_SIZE (1024 * 1024) // 1 MiB
 #define PATH_SIZE_MAX 1024
@@ -46,6 +47,7 @@ int do_pivot(const char *tmpdir);
 
 // Part II.     For mount
 void mount_needed();
+void mknod_needed() ;
 
 // Part III.     For capabilities
 void check_needed_cap();
@@ -135,6 +137,7 @@ static int child(void *arg) {
     // mount something needed
     mount_needed();
 	mount_cgroup_needed();
+	mknod_needed();
     
     // send the tmpdir to parent process(host machine)
     close(carg.fds_c2p[0]);
@@ -147,9 +150,6 @@ static int child(void *arg) {
 
     // use seccomp
     set_seccomp();
-
-    // cgroup_limit()
-    //cgroup_limit(getpid());
     
     execvp(args[2], args + 2);
     error_exit(255, "exec");
@@ -197,7 +197,7 @@ int do_pivot(const char *tmpdir) {
 }
 
 /*
- * This part is for mount
+ * This part is for mount and mknod
  */
 void mount_needed() {
     // mount /dev
@@ -214,15 +214,25 @@ void mount_needed() {
 
 void mount_cgroup_needed() {
     // mounot cgroup/memory
-    mkdir("/sys/fs/cgroup/memory", 0755);
+    mkdir("/sys/fs/cgroup/memory", 0777);
     mount("cgroup", "/sys/fs/cgroup/memory", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "memory");
-	system("ls /sys/fs/cgroup/memory");
     // mounot cgroup/cpu,cpuacct
-    mkdir("/sys/fs/cgroup/cpu,cpuacct", 0755);
+    mkdir("/sys/fs/cgroup/cpu,cpuacct", 0777);
     mount("cgroup", "/sys/fs/cgroup/cpu,cpuacct", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "cpu,cpuacct");
     // mounot cgroup/pids
-    mkdir("/sys/fs/cgroup/pids", 0755);
+    mkdir("/sys/fs/cgroup/pids", 0777);
     mount("cgroup", "/sys/fs/cgroup/pids", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "pids");
+}
+
+void mknod_needed() {
+	// mknod null
+	mknod("/dev/null", S_IFCHR, makedev(1, 3));
+	// mknod zero
+	mknod("/dev/zero", S_IFCHR, makedev(1, 5));
+	// mknod urandom
+	mknod("/dev/urandom", S_IFCHR, makedev(1, 9));
+	// mknod tty
+	mknod("/dev/tty", S_IFCHR, makedev(5, 0));
 }
 
 /*
@@ -275,7 +285,8 @@ void cgroup_limit(int pid) {
     write_str("/sys/fs/cgroup/memory/lab4/cgroup.procs", pid_str, APPEND);
 
     // cpu part
-    mkdir("/sys/fs/cgroup/cpu,cpuacct/lab4", 0777);
+    if(mkdir("/sys/fs/cgroup/cpu,cpuacct/lab4", 0777) == -1)
+        perror("[container][error] mkdir(\"/sys/fs/cgroup/cpu,cpuacct/lab4\", 0777) ");
     //// limit cpu.shares
     write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cpu.shares", "256", OVERWRITE);
     write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cgroup.procs", pid_str, APPEND);
@@ -296,7 +307,6 @@ void cgroup_append() {
     // pids part
 	append("/sys/fs/cgroup/pids/lab4/cgroup.procs", "/sys/fs/cgroup/pids/cgroup.procs");
 }
-
 
 /*
  * This part is for capabilities
