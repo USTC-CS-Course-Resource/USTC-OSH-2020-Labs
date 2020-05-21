@@ -367,7 +367,7 @@ const char CAPS_STR_LIST[14][CAP_STR_SIZE_MAX] =
 
 void update_needed_cap() {
     capng_clear(CAPNG_SELECT_BOTH);
-    capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE|CAPNG_PERMITTED,
+    capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE | CAPNG_PERMITTED | CAPNG_BOUNDING_SET,
                   CAPS, -1);
     capng_apply(CAPNG_SELECT_BOTH);
 }
