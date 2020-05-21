@@ -29,6 +29,7 @@ const char *usage =
 typedef struct ChildArg {
     char **args;
     int fds_c2p[2];
+    int fds_p2c[2];
 } ChildArg;
 
 // Part I.      For isolation and pivot_root
@@ -85,10 +86,17 @@ int main(int argc, char **argv) {
     ChildArg carg;
     carg.args = argv;
     pipe(carg.fds_c2p);
+	pipe(carg.fds_p2c);
 
     int container_pid = clone(child, child_stack_start,
                    SIGCHLD | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID | CLONE_NEWCGROUP,
                    &carg);
+				   
+	printf("容器pid: %d\n", container_pid);
+	cgroup_limit(container_pid);
+	close(carg.fds_p2c[0]);
+	write(carg.fds_p2c[1], "ok", 3);
+	close(carg.fds_p2c[1]);
 	
     int status, ecode = 0;
     close (carg.fds_c2p[1]);
@@ -99,13 +107,13 @@ int main(int argc, char **argv) {
     if(rmdir(bind_path) == -1)
         perror("rmdir");
         
-    
     wait(&status);
 	cgroup_append();
 
     if(rmdir("/sys/fs/cgroup/memory/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/memory/lab4\") ");
     if(rmdir("/sys/fs/cgroup/cpu,cpuacct/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/cpu,cpuacct/lab4\")");
     if(rmdir("/sys/fs/cgroup/pids/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/pids/lab4\")");
+    //if(rmdir("/sys/fs/cgroup/blkio/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/blkio/lab4\")");
 
     if(WIFEXITED(status)) {
         printf("Child exited with code %d\n", WEXITSTATUS(status));
@@ -123,21 +131,35 @@ static int child(void *arg) {
     ChildArg carg = *((ChildArg*)arg);
     char **args = carg.args;
 
-	// set cgroup limit
-	cgroup_limit(getpid());
+    // recursively remount / as private
+    if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
+        errexit("[container][error] mount-MS_PRIVATE");
+		
+	// wait for parent's cgroup setting
+	char temp[32];
+	close(carg.fds_p2c[1]);
+	read(carg.fds_p2c[0], temp, 3);
+	close(carg.fds_p2c[0]);
 
     // create the tmpdir for container's rootfs
     char tmpdir[] = "/tmp/lab4-XXXXXX";
     mkdtemp(tmpdir);
-    printf("tmpdir: %s\n", tmpdir);
+    //printf("tmpdir: %s\n", tmpdir);
 
     // pivot_root
     do_pivot(tmpdir);
     
     // mount something needed
     mount_needed();
+
+    // mount /sys
+    if(mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL)) // mount "/sys" as MS_RDONLY
+		perror("[container][error] mount /sys");
+    /*// mount /proc
+    if(mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL))
+		perror("[container][error] mount /proc");*/
 	mount_cgroup_needed();
-	mknod_needed();
+	//mknod_needed();
     
     // send the tmpdir to parent process(host machine)
     close(carg.fds_c2p[0]);
@@ -169,9 +191,6 @@ int do_pivot(const char *tmpdir) {
 
     // get the full path of oldroot_path
     snprintf(oldroot_path, sizeof(char)*PATH_SIZE_MAX, "%s/%s", tmpdir, put_old);
-    // recursively remount / as private
-    if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
-        errexit("[container][error] mount-MS_PRIVATE");
     
     // bind the root of the container to tmpdir
     if (mount("./", tmpdir, NULL, MS_BIND, NULL) == -1)
@@ -200,28 +219,40 @@ int do_pivot(const char *tmpdir) {
  * This part is for mount and mknod
  */
 void mount_needed() {
-    // mount /dev
-    mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
-    // mount /proc
-    mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
     // mount /sys
-    mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL); // mount "/sys" as MS_RDONLY
+    if(mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL)) // mount "/sys" as MS_RDONLY
+		perror("[container][error] mount /sys");
+    // mount /proc
+    if(mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL))
+		perror("[container][error] mount /proc");
+    // mount /dev
+    if(mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL))
+		perror("[container][error] mount /dev");
     // mount /tmp
-    mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL);
-    // mount cgroup
-    mount("cgroup", "/sys/fs/cgroup", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL);
+    if(mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL))
+		perror("[container][error] mount /tmp");
 }
 
 void mount_cgroup_needed() {
+    // mount cgroup
+    if(mount("cgroup", "/sys/fs/cgroup", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL))
+		perror("[container][error] mount cgroup");
+
     // mounot cgroup/memory
-    mkdir("/sys/fs/cgroup/memory", 0777);
-    mount("cgroup", "/sys/fs/cgroup/memory", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "memory");
+    if(mkdir("/sys/fs/cgroup/memory", 0777)) 
+		perror("[container][error] mkdir cpu,cpuacct");
+    if(mount("cgroup", "/sys/fs/cgroup/memory", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "memory"))
+		perror("[container][error] mount memory");
     // mounot cgroup/cpu,cpuacct
-    mkdir("/sys/fs/cgroup/cpu,cpuacct", 0777);
-    mount("cgroup", "/sys/fs/cgroup/cpu,cpuacct", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "cpu,cpuacct");
+    if(mkdir("/sys/fs/cgroup/cpu,cpuacct", 0777)) 
+		perror("[container][error] mkdir cpu,cpuacct");
+    if(mount("cgroup", "/sys/fs/cgroup/cpu,cpuacct", "cgroup", MS_NOSUID | MS_NOEXEC | MS_NODEV| MS_RELATIME, "cpu,cpuacct"))
+		perror("[container][error] mount cpu,cpuacct");
     // mounot cgroup/pids
-    mkdir("/sys/fs/cgroup/pids", 0777);
-    mount("cgroup", "/sys/fs/cgroup/pids", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "pids");
+    if(mkdir("/sys/fs/cgroup/pids", 0777)) 
+		perror("[container][error] mkdir cpu,cpuacct");
+	if(mount("cgroup", "/sys/fs/cgroup/pids", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "pids"))
+		perror("[container][error] mount pids");
 }
 
 void mknod_needed() {
@@ -292,7 +323,8 @@ void cgroup_limit(int pid) {
     write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cgroup.procs", pid_str, APPEND);
 
     // pids part
-    mkdir("/sys/fs/cgroup/pids/lab4", 0777);
+    if(mkdir("/sys/fs/cgroup/pids/lab4", 0777))
+        perror("[container][error] mkdir(\"/sys/fs/cgroup/pids/lab4\", 0777) ");
     //// limit pids.max
     write_str("/sys/fs/cgroup/pids/lab4/pids.max", "64", OVERWRITE);
     write_str("/sys/fs/cgroup/pids/lab4/cgroup.procs", pid_str, APPEND);
