@@ -98,7 +98,3 @@ clone(child, child_stack_start,
 #### pids 部分
 
 1. cpu.shares: 将 `/sys/fs/cgroup/pids/lab4/pids.max` 配置为 `256`
-
-#### blkio 部分
-
-1. cpu.shares: 将 `/sys/fs/cgroup/blkio/lab4/blkio.weight` 配置为 `50`
