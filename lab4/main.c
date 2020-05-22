@@ -58,6 +58,8 @@ void update_needed_cap();
 void set_seccomp();
 
 // Part V.    For cgroup limit
+int write_str(const char *fname, const char *str, int mode);
+int append(const char *src, const char *dest);
 void mount_cgroup_needed();
 void cgroup_limit();
 void cgroup_append();
@@ -87,10 +89,11 @@ int main(int argc, char **argv) {
     carg.args = argv;
     pipe(carg.fds_c2p);
 	pipe(carg.fds_p2c);
-
+	//cgroup_limit(getpid());
     int container_pid = clone(child, child_stack_start,
                    SIGCHLD | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID | CLONE_NEWCGROUP,
                    &carg);
+
 				   
 	printf("容器pid: %d\n", container_pid);
 	cgroup_limit(container_pid);
@@ -113,6 +116,8 @@ int main(int argc, char **argv) {
     if(rmdir("/sys/fs/cgroup/memory/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/memory/lab4\") ");
     if(rmdir("/sys/fs/cgroup/cpu,cpuacct/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/cpu,cpuacct/lab4\")");
     if(rmdir("/sys/fs/cgroup/pids/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/pids/lab4\")");
+    rmdir("/sys/fs/cgroup/cpu,cpuacct/machine.slice");
+    rmdir("/sys/fs/cgroup/cpu,cpuacct/machine.slice/lab4-rootfs.scope");
     //if(rmdir("/sys/fs/cgroup/blkio/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/blkio/lab4\")");
 
     if(WIFEXITED(status)) {
@@ -127,12 +132,18 @@ int main(int argc, char **argv) {
 }
 
 static int child(void *arg) {
+	unshare(CLONE_NEWCGROUP);
     // recv the arg
     ChildArg carg = *((ChildArg*)arg);
     char **args = carg.args;
 
     // recursively remount / as private
     if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
+        errexit("[container][error] mount-MS_PRIVATE");
+
+    if (mount(NULL, "/sys/fs/cgroup", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
+        errexit("[container][error] mount-MS_PRIVATE");
+    if (mount(NULL, "/sys/fs/cgroup/cpu,cpuacct", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
         errexit("[container][error] mount-MS_PRIVATE");
 		
 	// wait for parent's cgroup setting
@@ -151,15 +162,8 @@ static int child(void *arg) {
     
     // mount something needed
     mount_needed();
-
-    // mount /sys
-    if(mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL)) // mount "/sys" as MS_RDONLY
-		perror("[container][error] mount /sys");
-    /*// mount /proc
-    if(mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL))
-		perror("[container][error] mount /proc");*/
 	mount_cgroup_needed();
-	//mknod_needed();
+	mknod_needed();
     
     // send the tmpdir to parent process(host machine)
     close(carg.fds_c2p[0]);
@@ -233,28 +237,6 @@ void mount_needed() {
 		perror("[container][error] mount /tmp");
 }
 
-void mount_cgroup_needed() {
-    // mount cgroup
-    if(mount("cgroup", "/sys/fs/cgroup", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL))
-		perror("[container][error] mount cgroup");
-
-    // mounot cgroup/memory
-    if(mkdir("/sys/fs/cgroup/memory", 0777)) 
-		perror("[container][error] mkdir cpu,cpuacct");
-    if(mount("cgroup", "/sys/fs/cgroup/memory", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "memory"))
-		perror("[container][error] mount memory");
-    // mounot cgroup/cpu,cpuacct
-    if(mkdir("/sys/fs/cgroup/cpu,cpuacct", 0777)) 
-		perror("[container][error] mkdir cpu,cpuacct");
-    if(mount("cgroup", "/sys/fs/cgroup/cpu,cpuacct", "cgroup", MS_NOSUID | MS_NOEXEC | MS_NODEV| MS_RELATIME, "cpu,cpuacct"))
-		perror("[container][error] mount cpu,cpuacct");
-    // mounot cgroup/pids
-    if(mkdir("/sys/fs/cgroup/pids", 0777)) 
-		perror("[container][error] mkdir cpu,cpuacct");
-	if(mount("cgroup", "/sys/fs/cgroup/pids", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "pids"))
-		perror("[container][error] mount pids");
-}
-
 void mknod_needed() {
 	// mknod null
 	mknod("/dev/null", S_IFCHR, makedev(1, 3));
@@ -300,13 +282,23 @@ int append(const char *src, const char *dest) {
     return 0;
 }
 
+#define MESSAGE_SIZE 1024
+void mkdir_perror(const char *path, mode_t mode) {
+    if(mkdir(path, mode) == -1) {
+		char message[MESSAGE_SIZE];
+		if(errno != EEXIST) {
+			sprintf(message, "[container][error] mkdir(\"%s\", %d)", path, mode);
+			perror(message);
+		}
+	}
+}
+
 void cgroup_limit(int pid) {
     char pid_str[32];
     sprintf(pid_str, "%d\n", pid);
 
     // memory part
-    if(mkdir("/sys/fs/cgroup/memory/lab4", 0777) == -1)
-        perror("[container][error] mkdir(\"/sys/fs/cgroup/memory/lab4\", 0777) ");
+    mkdir_perror("/sys/fs/cgroup/memory/lab4", 0777);
     //// limit user memory as 67108864 bytes
     write_str("/sys/fs/cgroup/memory/lab4/memory.limit_in_bytes", "67108864", OVERWRITE);
     //// limit user kernel as 67108864 bytes
@@ -315,19 +307,47 @@ void cgroup_limit(int pid) {
     write_str("/sys/fs/cgroup/memory/lab4/memory.swappiness", "0", OVERWRITE);
     write_str("/sys/fs/cgroup/memory/lab4/cgroup.procs", pid_str, APPEND);
 
-    // cpu part
-    if(mkdir("/sys/fs/cgroup/cpu,cpuacct/lab4", 0777) == -1)
-        perror("[container][error] mkdir(\"/sys/fs/cgroup/cpu,cpuacct/lab4\", 0777) ");
+    // cpu,cpuacct part
+    mkdir_perror("/sys/fs/cgroup/cpu,cpuacct/machine.slice", 0777);
+    mkdir_perror("/sys/fs/cgroup/cpu,cpuacct/machine.slice/lab4-rootfs.scope", 0777);
     //// limit cpu.shares
-    write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cpu.shares", "256", OVERWRITE);
-    write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cgroup.procs", pid_str, APPEND);
-
+    write_str("/sys/fs/cgroup/cpu,cpuacct/machine.slice/lab4-rootfs.scope/cpu.shares", "256", OVERWRITE);
+    write_str("/sys/fs/cgroup/cpu,cpuacct/machine.slice/lab4-rootfs.scope/cgroup.procs", pid_str, APPEND);
+	
     // pids part
-    if(mkdir("/sys/fs/cgroup/pids/lab4", 0777))
-        perror("[container][error] mkdir(\"/sys/fs/cgroup/pids/lab4\", 0777) ");
+    mkdir_perror("/sys/fs/cgroup/pids/lab4", 0777);
     //// limit pids.max
     write_str("/sys/fs/cgroup/pids/lab4/pids.max", "64", OVERWRITE);
     write_str("/sys/fs/cgroup/pids/lab4/cgroup.procs", pid_str, APPEND);
+}
+
+void mount_cgroup_needed() {
+	char pid_str[32];
+	sprintf(pid_str, "%d\n", getpid());
+    // mount cgroup
+    if(mount("cgroup", "/sys/fs/cgroup", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "mode=755"))
+		perror("[container][error] mount cgroup");
+
+    // mounot cgroup/memory
+    if(mkdir("/sys/fs/cgroup/memory", 0777)) 
+		perror("[container][error] mkdir cpu,cpuacct");
+    if(mount("cgroup", "/sys/fs/cgroup/memory", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "memory"))
+		perror("[container][error] mount memory");
+    write_str("/sys/fs/cgroup/memory/cgroup.procs", pid_str, APPEND);
+
+    // mounot cgroup/cpu,cpuacct
+    if(mkdir("/sys/fs/cgroup/cpu,cpuacct", 0777)) 
+		perror("[container][error] mkdir cpu,cpuacct");
+    if(mount("cgroup", "/sys/fs/cgroup/cpu,cpuacct", "cgroup", MS_NOSUID | MS_NOEXEC | MS_NODEV| MS_RELATIME, "cpu,cpuacct"))
+		perror("[container][error] mount cpu,cpuacct");
+    write_str("/sys/fs/cgroup/cpu,cpuacct/cgroup.procs", pid_str, APPEND);
+
+    // mounot cgroup/pids
+    if(mkdir("/sys/fs/cgroup/pids", 0777)) 
+		perror("[container][error] mkdir pids");
+	if(mount("cgroup", "/sys/fs/cgroup/pids", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "pids"))
+		perror("[container][error] mount pids");
+    write_str("/sys/fs/cgroup/pids/cgroup.procs", pid_str, APPEND);
 }
 
 // let inside procs information be appended to outside ones
