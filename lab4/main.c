@@ -91,7 +91,7 @@ int main(int argc, char **argv) {
 	pipe(carg.fds_p2c);
 	//cgroup_limit(getpid());
     int container_pid = clone(child, child_stack_start,
-                   SIGCHLD | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID | CLONE_NEWCGROUP,
+                   SIGCHLD | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID,
                    &carg);
 
 				   
@@ -134,20 +134,13 @@ static int child(void *arg) {
     ChildArg carg = *((ChildArg*)arg);
     char **args = carg.args;
 
-    // recursively remount / as private
-    if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
-        errexit("[container][error] mount-MS_PRIVATE");
-
-    if (mount(NULL, "/sys/fs/cgroup", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
-        errexit("[container][error] mount-MS_PRIVATE");
-    if (mount(NULL, "/sys/fs/cgroup/cpu,cpuacct", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
-        errexit("[container][error] mount-MS_PRIVATE");
-		
 	// wait for parent's cgroup setting
 	char temp[32];
 	close(carg.fds_p2c[1]);
 	read(carg.fds_p2c[0], temp, 3);
 	close(carg.fds_p2c[0]);
+
+	unshare(CLONE_NEWCGROUP);
 
     // create the tmpdir for container's rootfs
     char tmpdir[] = "/tmp/lab4-XXXXXX";
@@ -189,6 +182,10 @@ static int pivot_root(const char *new_root, const char *put_old)
 int do_pivot(const char *tmpdir) {
     char oldroot_path[PATH_SIZE_MAX];
     char put_old[] = "oldrootfs";
+
+    // recursively remount / as private
+    if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
+        errexit("[container][error] mount-MS_PRIVATE");
 
     // get the full path of oldroot_path
     snprintf(oldroot_path, sizeof(char)*PATH_SIZE_MAX, "%s/%s", tmpdir, put_old);
