@@ -116,9 +116,6 @@ int main(int argc, char **argv) {
     if(rmdir("/sys/fs/cgroup/memory/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/memory/lab4\") ");
     if(rmdir("/sys/fs/cgroup/cpu,cpuacct/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/cpu,cpuacct/lab4\")");
     if(rmdir("/sys/fs/cgroup/pids/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/pids/lab4\")");
-    rmdir("/sys/fs/cgroup/cpu,cpuacct/machine.slice");
-    rmdir("/sys/fs/cgroup/cpu,cpuacct/machine.slice/lab4-rootfs.scope");
-    //if(rmdir("/sys/fs/cgroup/blkio/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/blkio/lab4\")");
 
     if(WIFEXITED(status)) {
         printf("Child exited with code %d\n", WEXITSTATUS(status));
@@ -308,11 +305,10 @@ void cgroup_limit(int pid) {
     write_str("/sys/fs/cgroup/memory/lab4/cgroup.procs", pid_str, APPEND);
 
     // cpu,cpuacct part
-    mkdir_perror("/sys/fs/cgroup/cpu,cpuacct/machine.slice", 0777);
-    mkdir_perror("/sys/fs/cgroup/cpu,cpuacct/machine.slice/lab4-rootfs.scope", 0777);
+    mkdir_perror("/sys/fs/cgroup/cpu,cpuacct/lab4", 0777);
     //// limit cpu.shares
-    write_str("/sys/fs/cgroup/cpu,cpuacct/machine.slice/lab4-rootfs.scope/cpu.shares", "256", OVERWRITE);
-    write_str("/sys/fs/cgroup/cpu,cpuacct/machine.slice/lab4-rootfs.scope/cgroup.procs", pid_str, APPEND);
+    write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cpu.shares", "256", OVERWRITE);
+    write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cgroup.procs", pid_str, APPEND);
 	
     // pids part
     mkdir_perror("/sys/fs/cgroup/pids/lab4", 0777);
