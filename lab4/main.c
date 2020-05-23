@@ -61,7 +61,7 @@ void set_seccomp();
 int write_str(const char *fname, const char *str, int mode);
 int append(const char *src, const char *dest);
 void mount_cgroup_needed();
-void cgroup_limit();
+void cgroup_limit(pid_t pid);
 void cgroup_append();
 
 // Part VI. some utilities
@@ -125,7 +125,6 @@ int main(int argc, char **argv) {
 }
 
 static int child(void *arg) {
-	unshare(CLONE_NEWCGROUP);
     // recv the arg
     ChildArg carg = *((ChildArg*)arg);
     char **args = carg.args;
