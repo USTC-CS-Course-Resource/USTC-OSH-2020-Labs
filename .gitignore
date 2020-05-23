@@ -24,6 +24,8 @@ lab4/**
 !lab4/main.c
 !lab4/Makefile
 !lab4/README.md
+!lab4/cgroup_when_clone
+!lab4/cgroup_when_clone/main.c
 
 
 
