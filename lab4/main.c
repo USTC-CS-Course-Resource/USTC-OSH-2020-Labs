@@ -65,9 +65,7 @@ void cgroup_limit();
 void cgroup_append();
 
 // Part VI. some utilities
-void error_exit(int code, const char *message);
-void logger(const char *type, const char *format, ...);
-void errexit(const char *format, ...);
+void logger(const char *type, int error_exit_code, const char *format, ...);
 
 int main(int argc, char **argv) {
     if (argc < 3) {
@@ -75,7 +73,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     if (chdir(argv[1]) == -1)
-        error_exit(1, argv[1]);
+		logger("error", 255, argv[1]);
 
     void *child_stack = mmap(NULL, STACK_SIZE,
                              PROT_READ | PROT_WRITE,
@@ -94,8 +92,6 @@ int main(int argc, char **argv) {
                    SIGCHLD | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID,
                    &carg);
 
-				   
-	printf("容器pid: %d\n", container_pid);
 	cgroup_limit(container_pid);
 	close(carg.fds_p2c[0]);
 	write(carg.fds_p2c[1], "ok", 3);
@@ -108,19 +104,19 @@ int main(int argc, char **argv) {
     
     umount2(bind_path, MNT_DETACH);
     if(rmdir(bind_path) == -1)
-        perror("rmdir");
+		logger("warning", 0, "rmdir /tmp/lab4-XXXXXX");
         
     wait(&status);
 	cgroup_append();
 
-    if(rmdir("/sys/fs/cgroup/memory/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/memory/lab4\") ");
-    if(rmdir("/sys/fs/cgroup/cpu,cpuacct/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/cpu,cpuacct/lab4\")");
-    if(rmdir("/sys/fs/cgroup/pids/lab4") == -1) perror("rmdir(\"/sys/fs/cgroup/pids/lab4\")");
+    if(rmdir("/sys/fs/cgroup/memory/lab4") == -1) logger("warning", 0, "/sys/fs/cgroup/memory/lab4");
+    if(rmdir("/sys/fs/cgroup/cpu,cpuacct/lab4") == -1) logger("warning", 0, "/sys/fs/cgroup/pu,cpuacct/lab4");
+    if(rmdir("/sys/fs/cgroup/pids/lab4") == -1) logger("warning", 0, "/sys/fs/cgroup/pids/lab4");
 
     if(WIFEXITED(status)) {
         printf("Child exited with code %d\n", WEXITSTATUS(status));
         ecode = WEXITSTATUS(status);
-    } 
+    }
     else if(WIFSIGNALED(status)) {
         printf("Killed by signal %d\n", WTERMSIG(status));
         ecode = -WTERMSIG(status);
@@ -168,7 +164,7 @@ static int child(void *arg) {
     set_seccomp();
     
     execvp(args[2], args + 2);
-    error_exit(255, "exec");
+	logger("error", 255, "exec");
 }
 
 /*
@@ -185,32 +181,34 @@ int do_pivot(const char *tmpdir) {
 
     // recursively remount / as private
     if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) == 1)
-        errexit("[container][error] mount-MS_PRIVATE");
+        logger("error", 0, "mount-MS_PRIVATE");
 
     // get the full path of oldroot_path
     snprintf(oldroot_path, sizeof(char)*PATH_SIZE_MAX, "%s/%s", tmpdir, put_old);
     
     // bind the root of the container to tmpdir
     if (mount("./", tmpdir, NULL, MS_BIND, NULL) == -1)
-        errexit("[container][error] mount-MS_BIND");
+        logger("error", 0, "mount-MS_BIND");
 
     // make dir oldroot_path (may fail because of EEXIST)
     mkdir(oldroot_path, 0777);
-    if(errno != 0) perror("[container][warning] mkdir");
+    if(errno != 0) logger("warning", 0, "mkdir oldroot_path");
 
     // And pivot the root filesystem
     if (pivot_root(tmpdir, oldroot_path) == -1)
-        errexit("[container][error] pivot_root");
+        logger("error", 0, "pivot_root");
 
     // Switch the current working directory to "/"
     if (chdir("/") == -1)
-        errexit("[container][error] chdir");
+        logger("error", 0, "chdir to /");
 
     // Unmount old root and remove mount point
     if (umount2(put_old, MNT_DETACH) == -1)
-        errexit("[container][error] umount2(put_old, MNT_DETACH)");
+        logger("error", 0, "detach old");
     if (rmdir(put_old) == -1)
-        errexit("[container][error] rmdir");
+        logger("error", 0, "rmdir old");
+
+	logger("info", 0, "%-32s\t[√]", "pivot_root");
 }
 
 /*
@@ -219,16 +217,18 @@ int do_pivot(const char *tmpdir) {
 void mount_needed() {
     // mount /sys
     if(mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME | MS_RDONLY, NULL)) // mount "/sys" as MS_RDONLY
-		perror("[container][error] mount /sys");
+        logger("error", 0, "mount /sys");
     // mount /proc
     if(mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL))
-		perror("[container][error] mount /proc");
+		logger("error", 0, "mount /proc");
     // mount /dev
     if(mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL))
-		perror("[container][error] mount /dev");
+		logger("error", 0, "mount /dev");
     // mount /tmp
     if(mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL))
-		perror("[container][error] mount /tmp");
+		logger("error", 0, "mount /tmp");
+
+	logger("info", 0, "%-32s\t[√]", "mount /sys, /proc, /dev, /tmp");
 }
 
 void mknod_needed() {
@@ -240,6 +240,8 @@ void mknod_needed() {
 	mknod("/dev/urandom", S_IFCHR, makedev(1, 9));
 	// mknod tty
 	mknod("/dev/tty", S_IFCHR, makedev(5, 0));
+
+	logger("info", 0, "%-32s\t[√]", "mknod");
 }
 
 /*
@@ -277,12 +279,11 @@ int append(const char *src, const char *dest) {
 }
 
 #define MESSAGE_SIZE 1024
-void mkdir_perror(const char *path, mode_t mode) {
+void mkdir_logger(const char *path, mode_t mode) {
     if(mkdir(path, mode) == -1) {
 		char message[MESSAGE_SIZE];
 		if(errno != EEXIST) {
-			sprintf(message, "[container][error] mkdir(\"%s\", %d)", path, mode);
-			perror(message);
+			logger("error", 0, "mkdir(\"%s\", %d)", path, mode);
 		}
 	}
 }
@@ -292,7 +293,7 @@ void cgroup_limit(int pid) {
     sprintf(pid_str, "%d\n", pid);
 
     // memory part
-    mkdir_perror("/sys/fs/cgroup/memory/lab4", 0777);
+    mkdir_logger("/sys/fs/cgroup/memory/lab4", 0777);
     //// limit user memory as 67108864 bytes
     write_str("/sys/fs/cgroup/memory/lab4/memory.limit_in_bytes", "67108864", OVERWRITE);
     //// limit user kernel as 67108864 bytes
@@ -302,16 +303,18 @@ void cgroup_limit(int pid) {
     write_str("/sys/fs/cgroup/memory/lab4/cgroup.procs", pid_str, APPEND);
 
     // cpu,cpuacct part
-    mkdir_perror("/sys/fs/cgroup/cpu,cpuacct/lab4", 0777);
+    mkdir_logger("/sys/fs/cgroup/cpu,cpuacct/lab4", 0777);
     //// limit cpu.shares
     write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cpu.shares", "256", OVERWRITE);
     write_str("/sys/fs/cgroup/cpu,cpuacct/lab4/cgroup.procs", pid_str, APPEND);
 	
     // pids part
-    mkdir_perror("/sys/fs/cgroup/pids/lab4", 0777);
+    mkdir_logger("/sys/fs/cgroup/pids/lab4", 0777);
     //// limit pids.max
     write_str("/sys/fs/cgroup/pids/lab4/pids.max", "64", OVERWRITE);
     write_str("/sys/fs/cgroup/pids/lab4/cgroup.procs", pid_str, APPEND);
+
+	logger("info", 0, "%-32s\t[√]", "cgroup limit");
 }
 
 void mount_cgroup_needed() {
@@ -319,28 +322,27 @@ void mount_cgroup_needed() {
 	sprintf(pid_str, "%d\n", getpid());
     // mount cgroup
     if(mount("cgroup", "/sys/fs/cgroup", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "mode=755"))
-		perror("[container][error] mount cgroup");
+		logger("error", 0, "mount /sys/fs/cgroup");
 
     // mounot cgroup/memory
-    if(mkdir("/sys/fs/cgroup/memory", 0777)) 
-		perror("[container][error] mkdir cpu,cpuacct");
+	mkdir_logger("/sys/fs/cgroup/memory", 0777);
     if(mount("cgroup", "/sys/fs/cgroup/memory", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "memory"))
-		perror("[container][error] mount memory");
+		logger("error", 0, "mount /sys/fs/cgroup/memory");
     write_str("/sys/fs/cgroup/memory/cgroup.procs", pid_str, APPEND);
 
     // mounot cgroup/cpu,cpuacct
-    if(mkdir("/sys/fs/cgroup/cpu,cpuacct", 0777)) 
-		perror("[container][error] mkdir cpu,cpuacct");
+	mkdir_logger("/sys/fs/cgroup/cpu,cpuacct", 0777);
     if(mount("cgroup", "/sys/fs/cgroup/cpu,cpuacct", "cgroup", MS_NOSUID | MS_NOEXEC | MS_NODEV| MS_RELATIME, "cpu,cpuacct"))
-		perror("[container][error] mount cpu,cpuacct");
+		logger("error", 0, "mount /sys/fs/cgroup/cpu,cpuacct");
     write_str("/sys/fs/cgroup/cpu,cpuacct/cgroup.procs", pid_str, APPEND);
 
     // mounot cgroup/pids
-    if(mkdir("/sys/fs/cgroup/pids", 0777)) 
-		perror("[container][error] mkdir pids");
+	mkdir_logger("/sys/fs/cgroup/pids", 0777);
 	if(mount("cgroup", "/sys/fs/cgroup/pids", "cgroup", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, "pids"))
-		perror("[container][error] mount pids");
+		logger("error", 0, "mount /sys/fs/cgroup/pids");
     write_str("/sys/fs/cgroup/pids/cgroup.procs", pid_str, APPEND);
+
+	logger("info", 0, "%-32s\t[√]", "mount cgroup");
 }
 
 // let inside procs information be appended to outside ones
@@ -364,14 +366,14 @@ void cgroup_append() {
              CAP_SETGID, CAP_SETUID, CAP_NET_BIND_SERVICE,\
              CAP_SYS_CHROOT, CAP_SETFCAP
 
-const int CAPS_LIST[14] = 
+const int CAPS_LIST[CAPS_NUM] = 
     {CAP_SETPCAP, CAP_MKNOD, CAP_AUDIT_WRITE,
      CAP_CHOWN, CAP_NET_RAW, CAP_DAC_OVERRIDE,
      CAP_FOWNER, CAP_FSETID, CAP_KILL,
      CAP_SETGID, CAP_SETUID, CAP_NET_BIND_SERVICE,
      CAP_SYS_CHROOT, CAP_SETFCAP};
 
-const char CAPS_STR_LIST[14][CAP_STR_SIZE_MAX] = 
+const char CAPS_STR_LIST[CAPS_NUM][CAP_STR_SIZE_MAX] = 
     {"CAP_SETPCAP", "CAP_MKNOD", "CAP_AUDIT_WRITE",
      "CAP_CHOWN", "CAP_NET_RAW", "CAP_DAC_OVERRIDE",
      "CAP_FOWNER", "CAP_FSETID", "CAP_KILL",
@@ -386,12 +388,19 @@ void update_needed_cap() {
 }
 
 void check_needed_cap() {
+	int counter = 0;
     for(int i = 0; i < CAPS_NUM; i++) {
         if (capng_have_capability(CAPNG_EFFECTIVE, CAPS_LIST[i]))
-            logger("info", "%22s\t[√]\n", CAPS_STR_LIST[i]);
+			counter++;
+            //logger("info", 0, "%-32s\t[√]", CAPS_STR_LIST[i]);
         else
-            logger("info", "%22s\t[x]\n", CAPS_STR_LIST[i]);
+            logger("warning", 0, "%-32s\t[x]", CAPS_STR_LIST[i]);
     }
+	if(counter == CAPS_NUM)
+		logger("info", 0, "%-32s\t[√]", "set capbilities");
+	else
+		logger("info", 0, "%-32s\t[x]", "set capbilities");
+
 }
 
 /*
@@ -760,31 +769,21 @@ void set_seccomp() {
 
     seccomp_load(ctx);
     seccomp_release(ctx);
-    logger("info", "seccmop successfully finished!\n");
+    logger("info", 0, "%-32s\t[√]", "set seccmop");
     return;
 out:
     seccomp_release(ctx);
-    errexit("[container][error] syscall_filter failed! ");
+    logger("error", 255, "%-32s\t[x]", "set seccmop");
 }
 
-void error_exit(int code, const char *message) {
-    perror(message);
-    _exit(code);
+void logger(const char *type, int error_exit_code, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    fprintf(stderr, "[container][%s]\t", type);
+    vfprintf(stderr, format, args);
+	if(error_exit_code != 0) perror("");
+	else fprintf(stderr, "\n");
+    va_end(args);
+	if(error_exit_code != 0)
+		exit(error_exit_code);
 }
-
-void logger(const char *type, const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    fprintf(stderr, "[container][%s] ", type);
-    vfprintf(stderr, format, args);
-    va_end(args);
-} 
-
-void errexit(const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    vfprintf(stderr, format, args);
-    perror("");
-    va_end(args);
-    exit(1);
-} 
