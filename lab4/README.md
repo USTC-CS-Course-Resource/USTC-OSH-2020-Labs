@@ -83,11 +83,16 @@ clone(child, child_stack_start,
 
 ### cgroup 部分
 
+#### 正确隔离
+
 关于正确隔离的部分, 采用的是在操作完后加一句
 ```c
 unshare(CLONE_NEWCGROUP);
 ```
 此外, 为防意外, 还写了另一种方法. 即, 将父进程的`pid`移入`lab4内的cgroup.procs`中, 再进行`clone`, 而后做好限制后, 再将父进程的`pid`移出.(在文件夹`cgroup_when_clone`里有对应实现的`main.c`)  
+
+#### 配置cgroup
+
 除了统一都要向 `cgroup.procs` 追加当前容器的pid外, 还有以下配置:
 
 #### memory 部分
