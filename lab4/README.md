@@ -14,7 +14,7 @@
 > 1. `seccomp 模块` 实际使用系统调用应为`seccomp(2)` 和 `prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)`(用以禁用特权) . 按照 man 文档的说明, 在 `SECCOMP_SET_MODE_FILTER` 模式下, 可以通过 `BPF` 来过滤任意系统调用.  
 > 其**复杂之处**在于要构建BPF过滤器, 这涉及到十分复杂的BPF的指令及机器架构信息(从[seccomp的man手册](http://www.man7.org/linux/man-pages/man2/seccomp.2.html)中示例代码可见), 很难在一时间内完成.  
 > 2. 控制能力的模块实际系统调用主要包括 `capget(2)`, `capset(2)` 以及 `prctl(2)` 以执行 `PR_CAPBSET_DROP` (丢弃能力)  
-> 其**复杂之处**在于调用 `capget(2)` 和 `capset(2)` 的复杂位操作  
+> 其**复杂之处**在于调用 `capget(2)` 和 `capset(2)` 的复杂位操作及一系列繁琐的 `prctl` 函数调用. 这一系列操作下来, 远不如 `cap-ng` 的简便.
 
 #### 参考资料
 
