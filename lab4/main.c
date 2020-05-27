@@ -210,6 +210,7 @@ int do_pivot(const char *tmpdir) {
 	logger("info", 0, "%-32s\t[√]", "pivot_root");
 }
 
+#define ERROR_EXIT 0
 /*
  * This part is for mount and mknod
  */
@@ -226,11 +227,10 @@ void mount_needed() {
     // mount /tmp
     if(mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL))
 		logger("error", 0, "mount /tmp");
-
+		
 	logger("info", 0, "%-32s\t[√]", "mount /sys, /proc, /dev, /tmp");
 }
 
-#define ERROR_EXIT 1
 void mknod_needed() {
 	// mknod null
 	if(mknod("/dev/null", S_IFCHR, makedev(1, 3)))
@@ -246,7 +246,7 @@ void mknod_needed() {
 	if(mknod("/dev/urandom", S_IFCHR, makedev(1, 9)))
 		logger("error", ERROR_EXIT, "mknod /dev/urandom");
 	if(chmod("/dev/urandom", 0666))
-		logger("error", ERROR_EXIT, "chmod /dev/urandom");
+		logger("error", ERROR_EXIT, "chmod /dev/urandom");	
 	// mknod tty
 	if(mknod("/dev/tty", S_IFCHR, makedev(5, 0)))
 		logger("error", ERROR_EXIT, "mknod /dev/tty");
