@@ -221,7 +221,7 @@ void mount_needed() {
     if(mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL))
 		logger("error", 0, "mount /proc");
     // mount /dev
-    if(mount("udev", "/dev", "tmpfs", MS_NOSUID | MS_NOEXEC | MS_RELATIME, NULL))
+    if(mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NOEXEC | MS_RELATIME, NULL))
 		logger("error", 0, "mount /dev");
     // mount /tmp
     if(mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL))
@@ -233,24 +233,24 @@ void mount_needed() {
 void mknod_needed() {
 	// mknod null
 	if(mknod("/dev/null", S_IFCHR, makedev(1, 3)))
-		logger("error", 0, "mknod /dev/null");
+		logger("error", 1, "mknod /dev/null");
 	if(chmod("/dev/null", 0666))
-		logger("error", 0, "chmod /dev/null");
+		logger("error", 1, "chmod /dev/null");
 	// mknod zero
 	if(mknod("/dev/zero", S_IFCHR, makedev(1, 5)))
-		logger("error", 0, "mknod /dev/zero");
+		logger("error", 1, "mknod /dev/zero");
 	if(chmod("/dev/zero", 0666))
-		logger("error", 0, "chmod /dev/zero");
+		logger("error", 1, "chmod /dev/zero");
 	// mknod urandom
 	if(mknod("/dev/urandom", S_IFCHR, makedev(1, 9)))
-		logger("error", 0, "mknod /dev/urandom");
+		logger("error", 1, "mknod /dev/urandom");
 	if(chmod("/dev/urandom", 0666))
-		logger("error", 0, "chmod /dev/urandom");
+		logger("error", 1, "chmod /dev/urandom");
 	// mknod tty
 	if(mknod("/dev/tty", S_IFCHR, makedev(5, 0)))
-		logger("error", 0, "mknod /dev/tty");
+		logger("error", 1, "mknod /dev/tty");
 	if(chmod("/dev/tty", 0660))
-		logger("error", 0, "chmod /dev/tty");
+		logger("error", 1, "chmod /dev/tty");
 
 	logger("info", 0, "%-32s\t[√]", "mknod");
 }
@@ -787,14 +787,21 @@ out:
     logger("error", 255, "%-32s\t[x]", "set seccmop");
 }
 
-void logger(const char *type, int error_exit_code, const char *format, ...) {
+/*
+ * logger:
+ * 	When type is "error" and exit_code isn't 0, the logger will invoke exit(exit_code)
+ * 	otherwise, no exitting will occur.
+ */ 
+void logger(const char *type, int exit_code, const char *format, ...) {
     va_list args;
     va_start(args, format);
     fprintf(stderr, "[container][%s]\t", type);
     vfprintf(stderr, format, args);
-	if(error_exit_code != 0) perror("");
+	if(strcmp(type, "error") == 0) {
+		perror(" ");
+		if(exit_code != 0)
+			exit(exit_code);
+	}
 	else fprintf(stderr, "\n");
     va_end(args);
-	if(error_exit_code != 0)
-		exit(error_exit_code);
 }
