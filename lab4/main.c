@@ -221,7 +221,7 @@ void mount_needed() {
     if(mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL))
 		logger("error", 0, "mount /proc");
     // mount /dev
-    if(mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NOEXEC | MS_RELATIME, NULL))
+    if(mount("udev", "/dev", "tmpfs", MS_NOSUID | MS_NOEXEC | MS_RELATIME, NULL))
 		logger("error", 0, "mount /dev");
     // mount /tmp
     if(mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL))
@@ -230,27 +230,30 @@ void mount_needed() {
 	logger("info", 0, "%-32s\t[√]", "mount /sys, /proc, /dev, /tmp");
 }
 
+#define ERROR_EXIT 1
 void mknod_needed() {
 	// mknod null
 	if(mknod("/dev/null", S_IFCHR, makedev(1, 3)))
-		logger("error", 1, "mknod /dev/null");
+		logger("error", ERROR_EXIT, "mknod /dev/null");
 	if(chmod("/dev/null", 0666))
-		logger("error", 1, "chmod /dev/null");
+		logger("error", ERROR_EXIT, "chmod /dev/null");
 	// mknod zero
 	if(mknod("/dev/zero", S_IFCHR, makedev(1, 5)))
-		logger("error", 1, "mknod /dev/zero");
+		logger("error", ERROR_EXIT, "mknod /dev/zero");
 	if(chmod("/dev/zero", 0666))
-		logger("error", 1, "chmod /dev/zero");
+		logger("error", ERROR_EXIT, "chmod /dev/zero");
 	// mknod urandom
 	if(mknod("/dev/urandom", S_IFCHR, makedev(1, 9)))
-		logger("error", 1, "mknod /dev/urandom");
+		logger("error", ERROR_EXIT, "mknod /dev/urandom");
 	if(chmod("/dev/urandom", 0666))
-		logger("error", 1, "chmod /dev/urandom");
+		logger("error", ERROR_EXIT, "chmod /dev/urandom");
 	// mknod tty
 	if(mknod("/dev/tty", S_IFCHR, makedev(5, 0)))
-		logger("error", 1, "mknod /dev/tty");
+		logger("error", ERROR_EXIT, "mknod /dev/tty");
 	if(chmod("/dev/tty", 0660))
-		logger("error", 1, "chmod /dev/tty");
+		logger("error", ERROR_EXIT, "chmod /dev/tty");
+	if(chown("/dev/tty", 0, 5))
+		logger("error", ERROR_EXIT, "chown /dev/tty");
 
 	logger("info", 0, "%-32s\t[√]", "mknod");
 }
