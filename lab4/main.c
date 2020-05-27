@@ -221,7 +221,7 @@ void mount_needed() {
     if(mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL))
 		logger("error", 0, "mount /proc");
     // mount /dev
-    if(mount("udev", "/dev", "devtmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL))
+    if(mount("udev", "/dev", "tmpfs", MS_NOSUID | MS_NOEXEC | MS_RELATIME, NULL))
 		logger("error", 0, "mount /dev");
     // mount /tmp
     if(mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL))
@@ -232,13 +232,25 @@ void mount_needed() {
 
 void mknod_needed() {
 	// mknod null
-	mknod("/dev/null", S_IFCHR, makedev(1, 3));
+	if(mknod("/dev/null", S_IFCHR, makedev(1, 3)))
+		logger("error", 0, "mknod /dev/null");
+	if(chmod("/dev/null", 0666))
+		logger("error", 0, "chmod /dev/null");
 	// mknod zero
-	mknod("/dev/zero", S_IFCHR, makedev(1, 5));
+	if(mknod("/dev/zero", S_IFCHR, makedev(1, 5)))
+		logger("error", 0, "mknod /dev/zero");
+	if(chmod("/dev/zero", 0666))
+		logger("error", 0, "chmod /dev/zero");
 	// mknod urandom
-	mknod("/dev/urandom", S_IFCHR, makedev(1, 9));
+	if(mknod("/dev/urandom", S_IFCHR, makedev(1, 9)))
+		logger("error", 0, "mknod /dev/urandom");
+	if(chmod("/dev/urandom", 0666))
+		logger("error", 0, "chmod /dev/urandom");
 	// mknod tty
-	mknod("/dev/tty", S_IFCHR, makedev(5, 0));
+	if(mknod("/dev/tty", S_IFCHR, makedev(5, 0)))
+		logger("error", 0, "mknod /dev/tty");
+	if(chmod("/dev/tty", 0660))
+		logger("error", 0, "chmod /dev/tty");
 
 	logger("info", 0, "%-32s\t[√]", "mknod");
 }
