@@ -1,5 +1,7 @@
 # OSH-2020-Labs
-王章瀚 PB18111697
+王章瀚
+
+感谢课程老师刑凯，助教taoky,iBug等的指导与帮助.
 
 ## the File Structure of lab1
 
