@@ -1,4 +1,7 @@
 # OSH-2020-Labs
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/RabbitWhite1/USTC-Health-Report/blob/master/LICENSE)
+
 王章瀚
 
 感谢课程老师刑凯，助教taoky,iBug等的指导与帮助.
