@@ -6,7 +6,7 @@
 
 感谢课程老师刑凯，助教taoky,iBug等的指导与帮助.
 
-## the File Structure of lab1
+## The File Structure of lab1
 
 ```bash
 lab1  
@@ -22,7 +22,7 @@ lab1
     └── mbr.asm
 ```
 
-## the File Structure of lab2
+## The File Structure of lab2
 
 ```bash
 lab2
@@ -35,7 +35,7 @@ lab2
 ├── test
 ```
 
-## the File Structure of lab3
+## The File Structure of lab3
 
 ```bash
 lab3
@@ -50,7 +50,7 @@ lab3
 ├── README.md
 ```
 
-## the File Structure of lab4
+## The File Structure of lab4
 
 ```bash
 lab4
